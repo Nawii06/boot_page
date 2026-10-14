@@ -1,6 +1,6 @@
 # 국립한국교통대학교 부트캠프(AI)사업단 파일럿 홈페이지
 
-공개 15개·관리자 13개 화면을 갖춘 **로컬 실행본**입니다. P-10 핵심 동작 검수와 P-11 새 폴더 재현·인계 준비의 결과는 [로컬 검수 결과](docs/LOCAL_ACCEPTANCE.md)와 [진행기록](docs/BUILD_PROGRESS.md)에 구분해 기록합니다. 실제 한컴 HWP/HWPX 원본과 실제 Git 추적 상태는 미검증으로 유지하며 전체 최종 완료 판정은 보류합니다. 외부 배포는 수행하지 않았습니다. 후속 준비는 [Replit 인계](docs/REPLIT_HANDOFF.md), [Cloudflare 인계](docs/CLOUDFLARE_HANDOFF.md)를 따릅니다.
+공개 15개·관리자 13개 화면을 갖춘 **로컬 실행본**입니다. P-10 핵심 동작 검수와 P-11 새 폴더 재현·인계 준비의 결과는 [로컬 검수 결과](docs/LOCAL_ACCEPTANCE.md)와 [진행기록](docs/BUILD_PROGRESS.md)에 구분해 기록합니다. 실제 한컴 HWP/HWPX 원본은 미검증으로 유지하며 전체 최종 완료 판정은 보류합니다. 후속 승인에 따라 로컬 Git `main`을 구성하고 실제 추적 파일·커밋 이력의 제외 검사를 통과했습니다. 외부 배포는 수행하지 않았습니다. 후속 준비는 [Replit 인계](docs/REPLIT_HANDOFF.md), [Cloudflare 인계](docs/CLOUDFLARE_HANDOFF.md)를 따릅니다.
 
 ## 실행 환경
 
@@ -415,7 +415,19 @@ FAQ는 표시 순서대로 10건씩 보여 주며 검색·페이지 이동과 `/
 | `migrations/`, 공개 가능한 `seed/example-contents.json` | 실제 `.sqlite`/`.db` 및 WAL/SHM, `var/`, 업로드·DB 사본·콘텐츠 백업 |
 | `README.md`, `docs/`, 기준 원문, 값이 비어 있는 `.env.example`, `.gitignore` | 사용자 지정 저장소·백업 경로의 실데이터 |
 
-현재 폴더는 Git 저장소가 아니므로 브랜치·커밋·remote를 임의로 만들지 않았습니다. 변경 내용은 [BUILD_PROGRESS](docs/BUILD_PROGRESS.md)에 기록하며 실제 Git 추적/이력 확인은 미검증으로 남깁니다. 사용자가 승인한 저장소를 준비한 뒤 `git status --short`, `git ls-files`, `git check-ignore -v -- .env var/db/bootcamp.sqlite var/uploads var/backups .cache node_modules dist`로 **실제 추적 목록과 제외 규칙을 함께** 확인해야 합니다. `.gitignore` 추가만으로 이미 추적된 비밀이 이력에서 사라지지는 않습니다. 이 명령은 검토용이며 이 단계에 `git init`·commit·remote 설정·push·저장소 생성은 포함하지 않습니다.
+사용자의 후속 승인에 따라 2026-10-15 로컬 Git 저장소를 만들었습니다. 브랜치는 `main`, 소스 기준 커밋은 `9c104077f93988d3171d262abce4201bf088e556`입니다. 이후 Git 검수 문서 갱신은 별도 커밋으로 구분합니다. 작성자 정보와 `core.autocrlf=false`는 이 저장소에만 설정해 현재 파일 바이트를 보존했습니다. 실제 index·HEAD 및 모든 로컬 참조에서 도달 가능한 커밋의 tree/blob을 검사했고, 추적 94파일에서 금지 경로·검사 대상 비밀값 발견 0건, 포함/제외 규칙 39/39를 확인했습니다. 알려지지 않은 모든 비밀의 부재를 보장하는 검사는 아닙니다. 상세 근거는 [LOCAL_ACCEPTANCE](docs/LOCAL_ACCEPTANCE.md)와 [BUILD_PROGRESS](docs/BUILD_PROGRESS.md)를 따릅니다.
+
+현재 도구 계정과 작업 폴더 소유자가 달라 Git의 소유권 확인이 발생할 수 있습니다. 아래처럼 **확인한 작업 경로만 해당 명령에 지정**합니다. 전역 `safe.directory`나 파일 소유권은 변경하지 않았습니다. 다른 폴더에서는 확인한 실제 경로로 바꿉니다.
+
+```powershell
+git -c safe.directory=D:/boot_page status --short
+git -c safe.directory=D:/boot_page log -5 --oneline
+git -c safe.directory=D:/boot_page rev-parse HEAD
+git -c safe.directory=D:/boot_page ls-files
+git -c safe.directory=D:/boot_page check-ignore -v -- .env var/db/bootcamp.sqlite var/uploads/ var/backups/ .cache/ node_modules/ dist/
+```
+
+소스와 문서만 커밋했고 `.env`·실제 DB·관리자 해시/세션·업로드·백업·ZIP·캐시는 제외했습니다. 이후 자료를 추가할 때도 실제 추적 목록을 확인합니다. `.gitignore` 추가만으로 이미 추적된 비밀이 이력에서 사라지지는 않습니다. 원격 저장소는 연결하지 않았고 push·Publish도 수행하지 않았습니다. 기존 ZIP과 P-11 소스 전달본은 이 Git 정리 이전 시점의 보존본이며 최신 문서 커밋을 포함하지 않습니다.
 
 Replit에 올릴 소스 커밋, 소스 manifest 해시, 운영 콘텐츠 기준 패키지/해시·시각, 편집 동결/재개 시점, 원격 변경자료 회수 위치·검증 결과는 [Replit 인계 기록표](docs/REPLIT_HANDOFF.md)에 실제 작업 시 채웁니다. 미정 항목을 가상의 커밋이나 저장소 주소로 채우지 않습니다.
 
@@ -423,6 +435,6 @@ Replit에 올릴 소스 커밋, 소스 manifest 해시, 운영 콘텐츠 기준 
 
 - 기존 기준 MD/TXT와 단계별 기록, 실제 DB·관리자 계정을 보존합니다. 실제 첨부는 기본 `var/uploads`에 저장합니다. P-05/P-06/P-07/P-08/P-09는 기존 스키마를 활용하며 추가 마이그레이션이나 seed 재실행이 필요하지 않습니다.
 - `.env`·로컬 DB·업로드·백업·로그·의존성·빌드 산출물은 `.gitignore` 제외 대상입니다. 사용자 지정 데이터 경로를 추가할 때도 추적 제외를 확인하세요.
-- 현재 폴더는 Git 저장소로 초기화하지 않았습니다. 원격 저장소 생성·push·Replit/Cloudflare 배포를 수행하지 않았습니다.
-- 실제 HWP/HWPX 원본 업로드·다운로드·해시 일치는 미검증 항목으로 유지합니다. 실제 업무 사용 또는 전체 검수 완료 전에 확인합니다. P-11 인계에서도 P-10 미검증을 유지하며 소스 전달·로컬 재현과 외부 운영 완료를 구분합니다. 전체 최종 완료 전 한컴 원본 시험과 저장소 준비 후 실제 추적 검사가 필요합니다.
+- 현재 로컬 Git `main`에 소스와 검수 기록을 커밋했습니다. 원격 저장소 생성·연결·push·Replit/Cloudflare 배포는 수행하지 않았습니다.
+- 실제 HWP/HWPX 원본 업로드·다운로드·해시 일치는 미검증 항목으로 유지합니다. 실제 업무 사용 또는 전체 검수 완료 전에 확인합니다. P-11 인계에서도 P-10 미검증을 유지하며 소스 전달·로컬 재현과 외부 운영 완료를 구분합니다. 실제 Git 추적·이력 검사는 후속 승인 작업에서 통과했습니다. 전체 최종 완료 전 한컴 원본 시험이 필요합니다.
 - [프로젝트 기준](docs/PROJECT_CONTEXT.md) · [화면 목록](docs/PAGE_INVENTORY.md) · [진행기록](docs/BUILD_PROGRESS.md)
