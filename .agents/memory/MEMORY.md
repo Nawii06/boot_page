@@ -1,0 +1,1 @@
+- [Replit runtime compatibility](replit-runtime-compatibility.md) — preserve the upstream Node 24.21 pin while Replit workflows run on an older Node version.

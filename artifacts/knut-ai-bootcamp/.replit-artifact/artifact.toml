@@ -12,10 +12,10 @@ paths = [ "/" ]
 localPort = 25508
 
 [services.development]
-run = "pnpm --filter @workspace/knut-ai-bootcamp run dev:web"
+run = "pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run dev:web"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/knut-ai-bootcamp", "run", "build" ]
+build = [ "pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "build" ]
 serve = "static"
 publicDir = "artifacts/knut-ai-bootcamp/dist/public"
 
@@ -27,6 +27,7 @@ to = "/index.html"
 PORT = "25508"
 BASE_PATH = "/"
 API_PORT = "3000"
+DEV_PORT = "5173"
 
 
 [[services]]
@@ -35,10 +36,10 @@ paths = ["/api"]
 localPort = 3000
 
 [services.development]
-run = "pnpm --filter @workspace/knut-ai-bootcamp run dev:api"
+run = "pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run dev:api"
 
 [services.production.build]
-args = ["pnpm", "--filter", "@workspace/knut-ai-bootcamp", "run", "build"]
+args = ["pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "build:server"]
 
 [services.production.build.env]
 NODE_ENV = "production"

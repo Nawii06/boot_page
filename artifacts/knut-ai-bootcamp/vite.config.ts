@@ -54,6 +54,7 @@ export default defineConfig(() => {
       host: config.host,
       port: webPort,
       strictPort: true,
+      allowedHosts: true,
       cors: false,
       watch: { ignored: ['**/.cache/**', '**/var/**', '**/uploads/**', '**/backups/**'] },
       ...(isReplit
