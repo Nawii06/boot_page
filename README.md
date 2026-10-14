@@ -423,11 +423,12 @@ FAQ는 표시 순서대로 10건씩 보여 주며 검색·페이지 이동과 `/
 git -c safe.directory=D:/boot_page status --short
 git -c safe.directory=D:/boot_page log -5 --oneline
 git -c safe.directory=D:/boot_page rev-parse HEAD
+git -c safe.directory=D:/boot_page ls-remote --heads origin main
 git -c safe.directory=D:/boot_page ls-files
 git -c safe.directory=D:/boot_page check-ignore -v -- .env var/db/bootcamp.sqlite var/uploads/ var/backups/ .cache/ node_modules/ dist/
 ```
 
-소스와 문서만 커밋했고 `.env`·실제 DB·관리자 해시/세션·업로드·백업·ZIP·캐시는 제외했습니다. 이후 자료를 추가할 때도 실제 추적 목록을 확인합니다. `.gitignore` 추가만으로 이미 추적된 비밀이 이력에서 사라지지는 않습니다. 원격 저장소는 연결하지 않았고 push·Publish도 수행하지 않았습니다. 기존 ZIP과 P-11 소스 전달본은 이 Git 정리 이전 시점의 보존본이며 최신 문서 커밋을 포함하지 않습니다.
+소스와 문서만 커밋했고 `.env`·실제 DB·관리자 해시/세션·업로드·백업·ZIP·캐시는 제외했습니다. 이후 자료를 추가할 때도 실제 추적 목록을 확인합니다. `.gitignore` 추가만으로 이미 추적된 비밀이 이력에서 사라지지는 않습니다. 이후 사용자가 지정한 [GitHub 저장소](https://github.com/Nawii06/boot_page)를 `origin`으로 연결하고 `main` push를 완료했습니다. Replit/Cloudflare Publish는 수행하지 않았습니다. 기존 ZIP과 P-11 소스 전달본은 이 Git 정리 이전 시점의 보존본이며 최신 문서 커밋을 포함하지 않습니다.
 
 Replit에 올릴 소스 커밋, 소스 manifest 해시, 운영 콘텐츠 기준 패키지/해시·시각, 편집 동결/재개 시점, 원격 변경자료 회수 위치·검증 결과는 [Replit 인계 기록표](docs/REPLIT_HANDOFF.md)에 실제 작업 시 채웁니다. 미정 항목을 가상의 커밋이나 저장소 주소로 채우지 않습니다.
 
@@ -435,6 +436,6 @@ Replit에 올릴 소스 커밋, 소스 manifest 해시, 운영 콘텐츠 기준 
 
 - 기존 기준 MD/TXT와 단계별 기록, 실제 DB·관리자 계정을 보존합니다. 실제 첨부는 기본 `var/uploads`에 저장합니다. P-05/P-06/P-07/P-08/P-09는 기존 스키마를 활용하며 추가 마이그레이션이나 seed 재실행이 필요하지 않습니다.
 - `.env`·로컬 DB·업로드·백업·로그·의존성·빌드 산출물은 `.gitignore` 제외 대상입니다. 사용자 지정 데이터 경로를 추가할 때도 추적 제외를 확인하세요.
-- 현재 로컬 Git `main`에 소스와 검수 기록을 커밋했습니다. 원격 저장소 생성·연결·push·Replit/Cloudflare 배포는 수행하지 않았습니다.
+- 현재 소스와 검수 기록은 [Nawii06/boot_page](https://github.com/Nawii06/boot_page)의 `main`에 push했습니다. 기존에 제공된 원격을 사용했으며 새 저장소 생성·Replit/Cloudflare 배포는 수행하지 않았습니다.
 - 실제 HWP/HWPX 원본 업로드·다운로드·해시 일치는 미검증 항목으로 유지합니다. 실제 업무 사용 또는 전체 검수 완료 전에 확인합니다. P-11 인계에서도 P-10 미검증을 유지하며 소스 전달·로컬 재현과 외부 운영 완료를 구분합니다. 실제 Git 추적·이력 검사는 후속 승인 작업에서 통과했습니다. 전체 최종 완료 전 한컴 원본 시험이 필요합니다.
 - [프로젝트 기준](docs/PROJECT_CONTEXT.md) · [화면 목록](docs/PAGE_INVENTORY.md) · [진행기록](docs/BUILD_PROGRESS.md)

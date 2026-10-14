@@ -155,3 +155,9 @@ PC의 공개 메인·관리 목록·서식 폼, 390px/320px의 공통 메뉴·�
 근거는 `.cache/git-initial-audit-index.json`(커밋 전), `.cache/git-initial-audit-baseline.json`(기준 커밋), `.cache/git-initial-audit-head.json`(최종 기록 커밋), `.cache/git-data-preservation.json`, `.cache/git-zip-preservation.json`이다. 검수 스크립트는 `python -X utf8 .cache/git-initial-audit.py --phase head`로 실행하며 감사 증거는 비공개 로컬 경로에 둔다. 검사는 현재 로컬 참조에서 도달 가능한 이력의 범위이며 알려지지 않은 모든 비밀이나 삭제된 참조에만 남은 이력을 완전히 검출한다고 주장하지 않는다.
 
 현재 Windows/Git 환경에서 수행했다. 도구 계정과 폴더 소유자가 달라 명령마다 확인한 경로만 `-c safe.directory=D:/boot_page`로 지정했다. 전역 Git 설정·소유권은 변경하지 않았다. 이번 작업은 Git과 문서만 변경했으므로 앱/브라우저 전체 시험을 다시 실행하지 않았다. 한컴 원본·실제 키보드 Ctrl+C 등 기존 미검증 항목은 남긴다.
+
+## 후속 승인 — GitHub 전송 확인 (2026-10-15)
+
+사용자가 지정한 [Nawii06/boot_page](https://github.com/Nawii06/boot_page)는 초기 refs가 없는 공개 저장소이며 push 권한을 확인했다. `origin/main`으로 기존 로컬 이력을 전송했고 최초 원격 SHA `4d7c046171cea4b0f11a624268ae9b06917f0d0c`가 로컬과 일치했다. 원격 기록 문서도 별도 후속 커밋으로 전송하며 최종 SHA는 README의 Git 명령으로 확인한다.
+
+전송 전 감사 `.cache/git-prepush-audit.json`은 실제 94파일·전체 2커밋 검사, 비밀/금지 경로 발견0, 제외 규칙39/39를 확인했다. 최종 문서 커밋의 감사 `.cache/git-postpush-audit.json`과 원격 SHA·파일 tree 일치/깨끗한 작업 트리 확인 `.cache/git-push-verification.json`을 별도 보관한다. 과거 로컬 Git 검사 시점의 원격0 기록은 변경하지 않는다. 앱/브라우저 재검·실제 HWP/HWPX 검증·외부 홈페이지 배포를 완료한 것으로 해석하지 않는다.

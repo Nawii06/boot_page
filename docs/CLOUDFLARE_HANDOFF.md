@@ -4,7 +4,7 @@
 
 목표 구성은 **Pages 프런트 + Workers API + 게시물 DB(D1 후보) + 비공개 R2 + 지정 관리자 인증**이다. 이번 P-11은 변경 지점과 검수 기준을 정리하는 단계다. Cloudflare 프로젝트·DB·버킷·비밀값·도메인 설정이나 배포는 수행하지 않았다. 로컬 실행 검증을 Workers 호환 검증으로 해석하지 않는다.
 
-기준은 [PROJECT_CONTEXT](PROJECT_CONTEXT.md), [README](../README.md), [28개 화면 및 미검증 목록](LOCAL_ACCEPTANCE.md)이다. 실제 한컴 작성 HWP/HWPX 원본 호환성은 미검증으로 유지한다. 실제 Git 추적/이력은 후속 승인된 로컬 커밋 정리에서 검사해 통과했으며 상세 범위는 검수표를 따른다.
+기준은 [PROJECT_CONTEXT](PROJECT_CONTEXT.md), [README](../README.md), [28개 화면 및 미검증 목록](LOCAL_ACCEPTANCE.md)이다. 실제 한컴 작성 HWP/HWPX 원본 호환성은 미검증으로 유지한다. 실제 Git 추적/이력은 후속 승인된 로컬 커밋 정리에서 검사해 통과했으며 상세 범위는 검수표를 따른다. 추가 승인으로 기존 [GitHub 저장소](https://github.com/Nawii06/boot_page)를 `origin`에 연결하고 `main` push를 완료했다. Cloudflare 앱 배포·원격 DB 변경은 수행하지 않았다.
 
 ## 1. 프런트와 API 경계
 
@@ -93,7 +93,7 @@ Cloudflare Access 같은 외부 관리 인증을 별도로 선택한다면 검�
 
 | 항목 | 기록할 값 / 현재 상태 |
 |---|---|
-| 소스 기준 | 로컬 `D:\boot_page`, `main`, 소스 기준 `9c104077f93988d3171d262abce4201bf088e556`. 최신 SHA는 README 명령으로 조회. 원격과 배포 커밋은 미정이며 전환 시 전체 SHA·미커밋 변경 유무 기록 |
+| 소스 기준 | 로컬 `D:\boot_page`, `origin`=[Nawii06/boot_page](https://github.com/Nawii06/boot_page), `main` push 완료. 소스 기준 `9c104077f93988d3171d262abce4201bf088e556`, 최신 SHA는 README 명령으로 조회. 앱 배포 커밋은 미정이며 전환 시 전체 SHA·미커밋 변경 유무 기록 |
 | 도구/어댑터 | Node/npm/잠금 파일·Wrangler 버전·compatibility date·D1/R2/인증 어댑터 버전. 후속 결정 |
 | 실행 환경 | Pages 프로젝트/배포 ID·Worker 이름/버전·사용 도메인·시험/운영 구분. 미생성 |
 | 저장소 | DB 이름/ID·R2 버킷/접두사·스키마/변환 버전·동시성/일관성 정책. 미정 |

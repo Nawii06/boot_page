@@ -2,7 +2,7 @@
 
 작성일: 2026-10-14 (Asia/Seoul)  
 갱신일: 2026-10-15 (Asia/Seoul)  
-현재 **P-11 로컬 새 폴더 재현·인계 준비 완료, 전체 최종 판정 보류**. 공개15·관리자13 및 실제 DB/파일/서버 인증을 유지한다. 소스와 콘텐츠 보존본을 분리하고 새 설치→관리자→자료 등록/공개/다운로드→재시작·다른 소스 폴더 복원을 검증했다. 한컴 원본은 미검증이다. 이후 승인된 로컬 Git 정리에서 `main`의 실제 index·커밋 이력 검사와 94파일 추적 제외 검증을 통과했다. 실행은 [README](../README.md), 결과는 [BUILD_PROGRESS](BUILD_PROGRESS.md)·[LOCAL_ACCEPTANCE](LOCAL_ACCEPTANCE.md), 외부 준비는 [REPLIT_HANDOFF](REPLIT_HANDOFF.md)·[CLOUDFLARE_HANDOFF](CLOUDFLARE_HANDOFF.md)를 따른다. 외부 배포는 수행하지 않았다.
+현재 **P-11 로컬 새 폴더 재현·인계 준비 완료, 전체 최종 판정 보류**. 공개15·관리자13 및 실제 DB/파일/서버 인증을 유지한다. 소스와 콘텐츠 보존본을 분리하고 새 설치→관리자→자료 등록/공개/다운로드→재시작·다른 소스 폴더 복원을 검증했다. 한컴 원본은 미검증이다. 이후 승인된 로컬 Git 정리에서 `main`의 실제 index·커밋 이력 검사와 94파일 추적 제외 검증을 통과했다. 추가 승인에 따라 [GitHub 저장소](https://github.com/Nawii06/boot_page)를 `origin`으로 연결하고 `main` push를 완료했다. 실행은 [README](../README.md), 결과는 [BUILD_PROGRESS](BUILD_PROGRESS.md)·[LOCAL_ACCEPTANCE](LOCAL_ACCEPTANCE.md), 외부 준비는 [REPLIT_HANDOFF](REPLIT_HANDOFF.md)·[CLOUDFLARE_HANDOFF](CLOUDFLARE_HANDOFF.md)를 따른다. 외부 배포는 수행하지 않았다.
 
 ## 1. 기준과 실제 초기 상태
 
@@ -27,7 +27,7 @@
 - 교육 진행/모집 상태 필드·배지·상태별 필터·날짜에 따른 자동 전환을 만들지 않는다. `publication`의 `draft / public / private`만 게시 여부로 사용한다.
 - HWP/HWPX 브라우저 미리보기·문서 자동변환은 필수가 아니다.
 - 공식 정보가 없으면 ‘입력 대기’, 시험 콘텐츠면 제목과 본문에 ‘예시’를 표시한다. 임의 과정·주소·연락처·기관 로고를 만들지 않는다.
-- 외부 Publish, Cloudflare 계정·원격 DB 변경, 도메인 연결, 원격 push는 이번 범위 밖이다.
+- P-01~11 범위에서 외부 Publish, Cloudflare 계정·원격 DB 변경, 도메인 연결, 원격 push는 제외했다. 이후 사용자가 지정한 GitHub 저장소로의 push만 별도 승인받아 완료했으며 외부 앱 Publish·원격 DB 변경은 수행하지 않았다.
 
 ## 3. 선택한 기술 기본안
 
@@ -251,6 +251,6 @@ P-08은 남은 메인·교육/프로그램·서식과 기존 공지의 관련 ID
 
 P-11에서 Node24.21.0·npm11.19.0을 package/lock engines와 일치시켰다. 기존 의존성·스키마·seed는 그대로다. source:package는 실데이터 없는 새 폴더와 파일 hash 목록을 만든다. README의 PowerShell 절차로 두 소스 폴더를 각각 설치·빌드하고 실제 TTY 관리자 생성/재설정, 3종 자료·공유 한글 PDF·관계·재시작·별도 복원을 확인했다. 관리자 설정 후 스트림이 남아 CLI가 종료하지 않던 문제를 수정하고 자연 종료0을 확인했다. 실제 계정·자료는 보존했다.
 
-최종 소스는 `.cache/releases/source-handoff-p11-20261015/`, 현재 로컬 콘텐츠 보존본은 `var/backups/content-handoff-p11-20261015/`로 분리한다. 시험 fresh 폴더에는 DB/관리자가 생성됐으므로 소스 전달본으로 공유하지 않는다. 운영 커밋·기준 콘텐츠·편집 동결/회수는 Replit 기록표에서 실제 작업 시 확정한다. 후속 승인으로 로컬 Git `main`을 구성했다. 소스 기준 커밋은 `9c104077f93988d3171d262abce4201bf088e556`이며 최신 기록 커밋은 README의 Git 명령으로 확인한다. 기존 소스 전달본/ZIP은 Git 정리 전 보존본이다. 외부 저장소·실행 환경은 만들지 않았다.
+최종 소스는 `.cache/releases/source-handoff-p11-20261015/`, 현재 로컬 콘텐츠 보존본은 `var/backups/content-handoff-p11-20261015/`로 분리한다. 시험 fresh 폴더에는 DB/관리자가 생성됐으므로 소스 전달본으로 공유하지 않는다. 운영 커밋·기준 콘텐츠·편집 동결/회수는 Replit 기록표에서 실제 작업 시 확정한다. 후속 승인으로 로컬 Git `main`을 구성했다. 소스 기준 커밋은 `9c104077f93988d3171d262abce4201bf088e556`이며 최신 기록 커밋은 README의 Git 명령으로 확인한다. 기존 소스 전달본/ZIP은 Git 정리 전 보존본이다. 추가 승인으로 기존 공개 [Nawii06/boot_page](https://github.com/Nawii06/boot_page)를 `origin`에 연결하고 `main`의 최초 push 커밋 `4d7c046171cea4b0f11a624268ae9b06917f0d0c`을 원격 조회와 대조했다. 후속 문서 변경은 별도 커밋으로 기록한다. 실제 앱 배포 커밋은 미정이며 Replit/Cloudflare Publish·원격 DB 변경은 수행하지 않았다.
 
 한컴 원본·별도 PC/빈 캐시·실물 모바일·운영 HTTPS는 미검증/후속 범위다. 실제 Git 추적·이력 검사는 후속 기록의 확인 범위에서 통과했다. 도구의 Ctrl+C 전송은 Windows 콘솔 제어 이벤트로 확인하지 못했고 재시작은 소유 PID 종료로 검증했다. 실제 키보드 Ctrl+C는 별도 확인한다. 로컬 인계를 Replit 영속성이나 Workers 무수정 호환/배포 완료로 해석하지 않는다.
