@@ -1,0 +1,95 @@
+{
+  "key": "p03-examples-v1",
+  "contents": [
+    {
+      "id": "03000000-0000-4000-8000-000000000001",
+      "kind": "notice",
+      "slug": "example-local-notice",
+      "title": "[예시] 로컬 홈페이지 데이터 확인 안내",
+      "bodyHtml": "<p>[예시] DB 저장과 공개 조회를 확인하는 테스트 안내입니다. 실제 사업 공지나 교육 모집 안내가 아닙니다.</p>",
+      "category": "예시",
+      "publication": "public",
+      "relatedIds": ["03000000-0000-4000-8000-000000000002", "03000000-0000-4000-8000-000000000004", "03000000-0000-4000-8000-000000000009"]
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000002",
+      "kind": "curriculum",
+      "slug": "example-curriculum",
+      "title": "[예시] 교육과정 안내 구조",
+      "bodyHtml": "<p>[예시] 교육과정의 소개·대상·운영 방식·이수요건을 저장하는 구조 확인 자료입니다. 실제 교육조건은 입력 대기 중입니다.</p>",
+      "category": "예시",
+      "publication": "public",
+      "program": { "level": "입력 대기", "audience": "입력 대기", "delivery": "입력 대기", "completionRequirements": "입력 대기" },
+      "relatedIds": ["03000000-0000-4000-8000-000000000004", "03000000-0000-4000-8000-000000000009"]
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000003",
+      "kind": "activity",
+      "slug": "example-activity",
+      "title": "[예시] 프로그램 안내 초안",
+      "bodyHtml": "<p>[예시] 프로그램 정보 저장을 위한 초안입니다. 실제 운영 조건과 참여 대상은 입력 대기 중입니다.</p>",
+      "category": "예시",
+      "publication": "draft",
+      "program": { "level": "입력 대기", "audience": "입력 대기", "delivery": "입력 대기", "completionRequirements": "입력 대기" }
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000004",
+      "kind": "resource",
+      "slug": "example-resource",
+      "title": "[예시] 서식 안내 구조",
+      "bodyHtml": "<p>[예시] 서식 안내 항목을 확인하는 자료입니다. 실제 제출 서류·기한·방법은 확정되지 않았으며 첨부파일은 없습니다.</p>",
+      "category": "예시",
+      "publication": "public",
+      "resource": { "audience": "입력 대기", "requiredDocuments": "입력 대기", "instructions": "입력 대기", "deadlineText": "입력 대기", "submissionMethod": "입력 대기", "destination": "입력 대기", "contact": "입력 대기", "applicableYear": null },
+      "relatedIds": ["03000000-0000-4000-8000-000000000002"]
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000005",
+      "kind": "faq",
+      "slug": "example-faq",
+      "title": "[예시] FAQ 작성 구조 확인",
+      "bodyHtml": "<p>[예시] 질문을 제목에, 답변을 본문에 저장하는 초안입니다. 실제 참여 안내는 확정 정보를 입력한 뒤 공개합니다.</p>",
+      "category": "예시",
+      "publication": "draft"
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000006",
+      "kind": "page",
+      "slug": "overview",
+      "title": "[예시] 사업단 기본정보 초안",
+      "bodyHtml": "<p>[예시] 사업단 기본정보 저장 구조를 확인하는 초안입니다. 공식 사업 정보는 입력 대기 중입니다.</p>",
+      "publication": "draft"
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000007",
+      "kind": "page",
+      "slug": "guide",
+      "title": "[예시] 참여 안내 초안",
+      "bodyHtml": "<p>[예시] 참여 안내 저장 구조를 확인하는 초안입니다. 실제 신청 조건·접수 방법·문의처는 입력 대기 중입니다.</p>",
+      "publication": "draft"
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000008",
+      "kind": "page",
+      "slug": "home",
+      "title": "[예시] 메인 안내 초안",
+      "bodyHtml": "<p>[예시] 메인 안내 저장 구조를 확인하는 초안입니다. 공식 메인 문안은 입력 대기 중입니다.</p>",
+      "publication": "draft"
+    },
+    {
+      "id": "03000000-0000-4000-8000-000000000009",
+      "kind": "notice",
+      "slug": "example-private-notice",
+      "title": "[예시] 비공개 연결 검증 자료",
+      "bodyHtml": "<p>[예시] 비공개 콘텐츠와 관련 링크가 공개 조회에서 제외되는지 확인하는 검증 자료입니다.</p>",
+      "category": "예시",
+      "publication": "private"
+    }
+  ],
+  "homeItems": [
+    { "section": "notice", "contentId": "03000000-0000-4000-8000-000000000001" },
+    { "section": "program", "contentId": "03000000-0000-4000-8000-000000000002" },
+    { "section": "resource", "contentId": "03000000-0000-4000-8000-000000000004" },
+    { "section": "featured", "contentId": "03000000-0000-4000-8000-000000000009" }
+  ]
+}
