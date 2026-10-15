@@ -14,7 +14,7 @@ model rather than replacing them with a new implementation.
   — apply pending local SQLite migrations; the app does not migrate on startup.
 - `pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run db:seed`
   — add the explicitly labeled example records to a fresh development database.
-- `pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run admin:create -- --username <chosen-id>`
+- `pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run admin:create --username <chosen-id>`
   — create an administrator using the interactive hidden password prompt.
 - `pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run typecheck`
   — typecheck the imported application.

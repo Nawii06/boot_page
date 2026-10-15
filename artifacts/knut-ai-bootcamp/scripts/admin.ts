@@ -14,7 +14,7 @@ let database: Database.Database | undefined;
 try {
   const [command, flag, rawUsername, ...other] = process.argv.slice(2);
   if (!['create', 'reset'].includes(command) || flag !== '--username' || !rawUsername || other.length) {
-    throw new Error('Use npm.cmd run admin:create -- --username USERNAME or npm.cmd run admin:reset -- --username USERNAME. Never pass passwords as arguments or environment variables.');
+    throw new Error('Use pnpm run admin:create --username USERNAME or pnpm run admin:reset --username USERNAME in Replit; on Windows, use npm.cmd run admin:create -- --username USERNAME or npm.cmd run admin:reset -- --username USERNAME. Never pass passwords as arguments or environment variables.');
   }
   const username = normalizeUsername(rawUsername);
   if (!username) throw new Error('Username must contain 3 to 100 ASCII letters, digits, dots, underscores or hyphens, beginning with a letter or digit.');

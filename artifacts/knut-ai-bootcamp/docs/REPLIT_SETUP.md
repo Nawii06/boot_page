@@ -31,7 +31,7 @@ workspace terminal and enter the password only into the hidden interactive
 prompt:
 
 ```sh
-pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run admin:create -- --username my_admin
+pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run admin:create --username my_admin
 ```
 
 Never put an administrator password in chat, command-line arguments, or
