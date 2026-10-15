@@ -41,7 +41,7 @@ async function sourceAt(directory: string) {
     const files = new FileService(db, config);
     const first = await files.saveUpload('preserved-one.pdf', pdfFixture('fault-one'));
     const second = await files.saveUpload('preserved-two.pdf', pdfFixture('fault-two'));
-    new ContentRepository(db).create({ kind: 'notice', slug: 'fault-source', title: '[Example] Restore fault boundary', bodyHtml: '<p>Preserved original body.</p>', publication: 'public', fileIds: [first.id, second.id] });
+    await new ContentRepository(db).create({ kind: 'notice', slug: 'fault-source', title: '[Example] Restore fault boundary', bodyHtml: '<p>Preserved original body.</p>', publication: 'public', fileIds: [first.id, second.id] });
   } finally { db.close(); }
   const packagePath = join(directory, 'package');
   await exportContentPackage(config, packagePath);

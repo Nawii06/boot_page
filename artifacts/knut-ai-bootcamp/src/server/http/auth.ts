@@ -19,18 +19,18 @@ function reject(res: Response, status: number, code: string, message: string) {
 }
 
 export function createAuthGuards(auth: AuthService, config: AppConfig) {
-  const requireAdmin: RequestHandler = (req, res, next) => {
-    const session = auth.getSession(readCookie(req, SESSION_COOKIE));
+  const requireAdmin: RequestHandler = async (req, res, next) => {
+    const session = await auth.getSession(readCookie(req, SESSION_COOKIE));
     if (!session) return reject(res, 401, 'AUTH_REQUIRED', '관리자 로그인이 필요합니다.');
     res.locals.adminSession = session;
     next();
   };
-  const requireMutationCsrf: RequestHandler = (req, res, next) => {
+  const requireMutationCsrf: RequestHandler = async (req, res, next) => {
     if (safeMethods.has(req.method)) return next();
     // Never derive trusted origins from Host, Referer or forwarded headers.
     const origin = req.get('origin');
     const csrf = req.get('X-CSRF-Token');
-    const session = auth.getSession(readCookie(req, SESSION_COOKIE));
+    const session = await auth.getSession(readCookie(req, SESSION_COOKIE));
     if (!session) return reject(res, 401, 'AUTH_REQUIRED', '관리자 로그인이 필요합니다.');
     if (!origin || !config.appOrigins.includes(origin) || !csrf || !tokenMatches(csrf, session.csrfToken)) {
       return reject(res, 403, 'CSRF_INVALID', '요청을 확인할 수 없습니다. 화면을 새로고침해 주세요.');
@@ -54,12 +54,12 @@ export function authRouter(auth: AuthService, config: AppConfig) {
     }
     next();
   };
-  router.get('/csrf', (req, res) => {
+  router.get('/csrf', async (req, res) => {
     const site = req.get('Sec-Fetch-Site');
     if ((site && !['same-origin', 'none'].includes(site)) || (req.get('origin') && !config.appOrigins.includes(req.get('origin')!))) {
       return reject(res, 403, 'CSRF_INVALID', '요청을 확인할 수 없습니다.');
     }
-    const issued = auth.issueLoginCsrf(req.ip || req.socket.remoteAddress || 'unknown', readCookie(req, PREAUTH_COOKIE));
+    const issued = await auth.issueLoginCsrf(req.ip || req.socket.remoteAddress || 'unknown', readCookie(req, PREAUTH_COOKIE));
     res.cookie(PREAUTH_COOKIE, issued.token, { ...cookieOptions, expires: new Date(issued.expiresAt) });
     res.json({ data: { csrfToken: issued.csrfToken } });
   });
@@ -79,8 +79,8 @@ export function authRouter(auth: AuthService, config: AppConfig) {
   router.get('/session', guards.requireAdmin, (_req, res) => {
     res.json({ data: sessionData(res.locals.adminSession) });
   });
-  router.post('/logout', guards.requireAdmin, guards.requireMutationCsrf, (req, res) => {
-    auth.logout(readCookie(req, SESSION_COOKIE));
+  router.post('/logout', guards.requireAdmin, guards.requireMutationCsrf, async (req, res) => {
+    await auth.logout(readCookie(req, SESSION_COOKIE));
     res.clearCookie(SESSION_COOKIE, cookieOptions);
     res.clearCookie(PREAUTH_COOKIE, cookieOptions);
     res.status(204).end();

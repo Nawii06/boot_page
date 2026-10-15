@@ -43,8 +43,8 @@ async function fixture(t: TestContext, options: { secure?: boolean } = {}) {
   const password = randomBytes(32).toString('base64url');
   const admin = await createAdmin(db, username, password);
   let repository = new ContentRepository(db);
-  const visible = repository.create({ kind: 'notice', slug: 'public-test', title: '[예시] 공개 테스트', bodyHtml: '<p>공개 테스트</p>', publication: 'public' });
-  const hidden = repository.create({ kind: 'notice', slug: 'private-test', title: '[예시] 비공개 테스트', bodyHtml: '<p>비공개 테스트</p>', publication: 'private' });
+  const visible = await repository.create({ kind: 'notice', slug: 'public-test', title: '[예시] 공개 테스트', bodyHtml: '<p>공개 테스트</p>', publication: 'public' });
+  const hidden = await repository.create({ kind: 'notice', slug: 'private-test', title: '[예시] 비공개 테스트', bodyHtml: '<p>비공개 테스트</p>', publication: 'private' });
   let server: Server;
   let base = '';
   function start() {
@@ -52,9 +52,9 @@ async function fixture(t: TestContext, options: { secure?: boolean } = {}) {
     const guards = createAuthGuards(new AuthService(db, { sessionTtlSeconds: config.sessionTtlSeconds }), config);
     // Test-only mutation exercises the production guards against a real DB write.
     // It is never registered by the application or available outside this fixture.
-    app.patch('/__test/content', guards.requireAdmin, guards.requireMutationCsrf, (_req, res) => {
-      const current = repository.getById(visible.id)!;
-      const updated = repository.update(visible.id, {
+    app.patch('/__test/content', guards.requireAdmin, guards.requireMutationCsrf, async (_req, res) => {
+      const current = (await repository.getById(visible.id))!;
+      const updated = await repository.update(visible.id, {
         kind: current.kind, slug: current.slug, title: '[예시] 권한 검증 후 실제 수정',
         bodyHtml: current.bodyHtml, publication: current.publication,
       }, current.revision);
@@ -118,7 +118,7 @@ test('anonymous public reads work; every administrative or unknown mutation requ
   }
   assert.equal((await f.request('/api/auth/session', { headers: { Cookie: `${sessionName}=${randomBytes(32).toString('base64url')}` } })).status, 401);
   assert.equal((await f.request('/__test/content', { method: 'PATCH' })).status, 401);
-  assert.equal(f.repository.getById(f.visible.id)?.revision, 1);
+  assert.equal((await f.repository.getById(f.visible.id))?.revision, 1);
 });
 
 test('login validates preauthentication CSRF and credentials; session cookies are opaque and HttpOnly', async t => {
@@ -172,7 +172,7 @@ test('production middleware permits real DB mutation only with session, trusted 
   }
   const headers = { Cookie: cookie, Origin: f.base, 'X-CSRF-Token': signedIn.csrf! };
   assert.equal((await f.request('/__test/content', { method: 'PATCH', headers })).status, 200);
-  assert.equal(f.repository.getById(f.visible.id)?.revision, 2);
+  assert.equal((await f.repository.getById(f.visible.id))?.revision, 2);
   assert.equal((await f.request('/api/files', { method: 'POST', headers })).status, 501, 'Unknown file writes remain unavailable after authorization');
   for (const path of ['/api/admin/contents', '/api/admin/files']) {
     assert.ok([400, 415].includes((await f.request(path, { method: 'POST', headers })).status), `${path} rejects an empty request after authorization`);
@@ -185,7 +185,7 @@ test('production middleware permits real DB mutation only with session, trusted 
   assert.match(logout.headers.getSetCookie().join(';'), /Max-Age=0|Expires=Thu, 01 Jan 1970/i);
   assert.equal((await f.request('/__test/content', { method: 'PATCH', headers })).status, 401);
   assert.equal((await f.request('/api/auth/session', { headers: { Cookie: cookie } })).status, 401);
-  assert.equal(f.repository.getById(f.visible.id)?.revision, 2);
+  assert.equal((await f.repository.getById(f.visible.id))?.revision, 2);
 });
 
 test('sessions survive an actual app/DB reopen; expiry and account disable are enforced on the next request', async t => {
@@ -239,8 +239,8 @@ test('login throttling persists across server restart and cannot be bypassed wit
 
 test('private content and attachment relationships are hidden anonymously and checked for authenticated administrators', async t => {
   const f = await fixture(t);
-  const file = f.repository.createFile({ storageKey: 'test-private/file.pdf', originalName: 'example.pdf', mediaType: 'application/pdf', extension: 'pdf', size: 10, sha256: 'a'.repeat(64) });
-  f.repository.update(f.hidden.id, { kind: 'notice', slug: f.hidden.slug, title: f.hidden.title, bodyHtml: f.hidden.bodyHtml, publication: 'private', fileIds: [file.id] }, f.hidden.revision);
+  const file = await f.repository.createFile({ storageKey: 'test-private/file.pdf', originalName: 'example.pdf', mediaType: 'application/pdf', extension: 'pdf', size: 10, sha256: 'a'.repeat(64) });
+  await f.repository.update(f.hidden.id, { kind: 'notice', slug: f.hidden.slug, title: f.hidden.title, bodyHtml: f.hidden.bodyHtml, publication: 'private', fileIds: [file.id] }, f.hidden.revision);
   const privateFile = `/api/files/${file.id}?contentId=${f.hidden.id}`;
   assert.equal((await f.request(`/api/admin/contents/${f.hidden.id}`)).status, 401);
   assert.equal((await f.request(privateFile)).status, 404);
@@ -255,7 +255,7 @@ test('private content and attachment relationships are hidden anonymously and ch
   assert.equal(JSON.stringify(body).includes(file.storageKey), false);
   assert.equal(JSON.stringify(body).includes(file.sha256), false);
   assert.equal((await f.request(privateFile, { headers })).status, 404, 'Missing physical bytes must not produce a successful download');
-  f.repository.update(f.visible.id, { kind: 'notice', slug: f.visible.slug, title: f.visible.title, bodyHtml: f.visible.bodyHtml, publication: 'public', fileIds: [file.id] }, f.visible.revision);
+  await f.repository.update(f.visible.id, { kind: 'notice', slug: f.visible.slug, title: f.visible.title, bodyHtml: f.visible.bodyHtml, publication: 'public', fileIds: [file.id] }, f.visible.revision);
   assert.equal((await f.request(`/api/files/${file.id}?contentId=${f.visible.id}`)).status, 404);
   assert.equal((await f.request(privateFile)).status, 404);
 });

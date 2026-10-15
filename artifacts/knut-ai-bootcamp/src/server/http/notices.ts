@@ -26,12 +26,12 @@ export function contentAdminRouter(repository: ContentRepository, files: FileSer
     maxUploadBytes: config.maxUploadBytes, maxFilesPerContent: config.maxFilesPerContent,
     extensions: ['hwp', 'hwpx', 'pdf', 'docx', 'jpg', 'jpeg', 'png', 'webp'],
   } }));
-  router.get('/notice-categories', (_req, res) => res.json({ data: repository.listNoticeCategories(false) }));
-  router.get('/content-categories', (req, res) => {
+  router.get('/notice-categories', async (_req, res) => res.json({ data: await repository.listNoticeCategories(false) }));
+  router.get('/content-categories', async (req, res) => {
     if (Object.keys(req.query).some(key => key !== 'kind') || typeof req.query.kind !== 'string' || !contentKinds.includes(req.query.kind as ContentKind)) fail('콘텐츠 종류를 확인해 주세요.');
-    res.json({ data: repository.listCategories(req.query.kind as ContentKind, false) });
+    res.json({ data: await repository.listCategories(req.query.kind as ContentKind, false) });
   });
-  router.get('/contents', (req, res) => {
+  router.get('/contents', async (req, res) => {
     const query: ContentListQuery & { publication?: Publication } = {};
     for (const [key, value] of Object.entries(req.query)) {
       if (!['kind', 'q', 'category', 'publication', 'page', 'pageSize'].includes(key) || typeof value !== 'string') fail('조회 조건을 확인해 주세요.');
@@ -40,16 +40,16 @@ export function contentAdminRouter(repository: ContentRepository, files: FileSer
         query[key] = Number(value);
       } else Object.assign(query, { [key]: value });
     }
-    res.json(repository.listAdminContents(query));
+    res.json(await repository.listAdminContents(query));
   });
-  router.get('/contents/:id/delete-impact', (req, res) => res.json({ data: repository.deleteImpact(req.params.id) }));
-  router.get('/contents/:id', (req, res) => {
-    const record = repository.getById(req.params.id);
+  router.get('/contents/:id/delete-impact', async (req, res) => res.json({ data: await repository.deleteImpact(req.params.id) }));
+  router.get('/contents/:id', async (req, res) => {
+    const record = await repository.getById(req.params.id);
     if (!record) throw new ContentRepositoryError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.');
     res.json({ data: safeContentRecord(record) });
   });
 
-  function prepareBody(input: unknown, old?: ContentRecord, fixedSlug?: string): ContentInput {
+  async function prepareBody(input: unknown, old?: ContentRecord, fixedSlug?: string): Promise<ContentInput> {
     object(input);
     allowedKeys(input, ['kind', 'title', 'bodyHtml', 'category', 'pinned', 'sortOrder', 'publication', 'publishedAt', 'program', 'resource', 'contact', 'fileLinks', 'relatedIds', 'links', ...(old || fixedSlug ? ['revision'] : [])]);
     const kind = fixedSlug ? 'page' : old?.kind ?? input.kind;
@@ -72,8 +72,8 @@ export function contentAdminRouter(repository: ContentRepository, files: FileSer
         Object.assign(merged, { [detail]: { ...base[detail], ...fields[detail] } });
       }
     }
-    const links = validateFileLinks(merged.fileLinks ?? [], fixedSlug === 'home');
-    const clean = cleanBody(merged.bodyHtml, contentId, links);
+    const links = await validateFileLinks(merged.fileLinks ?? [], fixedSlug === 'home');
+    const clean = await cleanBody(merged.bodyHtml, contentId, links);
     // Body links follow the sanitized HTML rather than arbitrary client-supplied URLs.
     const bodyIds = new Set(clean.imageIds);
     const finalLinks = links.filter(link => link.role !== 'body' || bodyIds.has(link.fileId));
@@ -85,14 +85,14 @@ export function contentAdminRouter(repository: ContentRepository, files: FileSer
     return merged;
   }
 
-  function validateFileLinks(value: unknown, allowHome = false): ContentFileInput[] {
+  async function validateFileLinks(value: unknown, allowHome = false): Promise<ContentFileInput[]> {
     if (!Array.isArray(value) || value.length > config.maxFilesPerContent * (allowHome ? 3 : 2)) fail('첨부파일 개수를 확인해 주세요.');
     const result: ContentFileInput[] = [];
     for (const link of value) {
       object(link); allowedKeys(link, ['fileId', 'role', 'altText']);
       if (typeof link.fileId !== 'string' || !uuid.test(link.fileId) || !(allowHome ? ['attachment', 'body', 'home'] : ['attachment', 'body']).includes(String(link.role))) fail('첨부파일 연결을 확인해 주세요.');
       if (link.altText !== undefined && (typeof link.altText !== 'string' || link.altText.length > 1000)) fail('이미지 대체 텍스트를 확인해 주세요.');
-      const file = files.resolveDownload(link.fileId, undefined, true).metadata;
+      const file = await files.getFileMetadata(link.fileId);
       if (link.role !== 'attachment' && !['jpg', 'jpeg', 'png', 'webp'].includes(file.extension)) fail('본문·메인에는 이미지 파일만 사용할 수 있습니다.');
       result.push({ fileId: link.fileId, role: link.role as ContentFileInput['role'], altText: link.altText as string | undefined });
     }
@@ -101,60 +101,64 @@ export function contentAdminRouter(repository: ContentRepository, files: FileSer
     return result;
   }
 
-  function cleanBody(body: unknown, contentId?: string, links: ContentFileInput[] = []) {
-    return cleanNoticeHtml(body, id => {
-      const file = files.resolveDownload(id, undefined, true).metadata;
+  async function cleanBody(body: unknown, contentId?: string, links: ContentFileInput[] = []) {
+    const altTexts = new Map(links.filter(link => link.role === 'body' && link.altText !== undefined).map(link => [link.fileId, link.altText!]));
+    const candidates = cleanNoticeHtml(body, () => true, contentId, altTexts);
+    const allowedIds = new Set<string>();
+    for (const fileId of candidates.imageIds) {
+      const file = await files.getFileMetadata(fileId);
       if (!['jpg', 'jpeg', 'png', 'webp'].includes(file.extension)) fail('본문에는 이미지 파일만 사용할 수 있습니다.');
-      return true;
-    }, contentId, new Map(links.filter(link => link.role === 'body' && link.altText !== undefined).map(link => [link.fileId, link.altText!])));
+      allowedIds.add(fileId);
+    }
+    return cleanNoticeHtml(body, fileId => allowedIds.has(fileId), contentId, altTexts);
   }
 
-  router.post(['/contents/preview', '/notices/preview'], (req, res) => {
+  router.post(['/contents/preview', '/notices/preview'], async (req, res) => {
     object(req.body); allowedKeys(req.body, ['bodyHtml', 'fileLinks', 'contentId']);
     if (req.body.contentId !== undefined && (typeof req.body.contentId !== 'string' || !uuid.test(req.body.contentId))) fail('콘텐츠 식별자를 확인해 주세요.');
-    const links = req.body.fileLinks !== undefined ? validateFileLinks(req.body.fileLinks, true) : [];
+    const links = req.body.fileLinks !== undefined ? await validateFileLinks(req.body.fileLinks, true) : [];
     // Preview URLs deliberately have no contentId: unlinked files still require the admin cookie.
-    const clean = cleanBody(req.body.bodyHtml, undefined, links);
+    const clean = await cleanBody(req.body.bodyHtml, undefined, links);
     res.json({ data: { bodyHtml: clean.html } });
   });
-  router.post('/contents', (req, res) => {
-    const record = repository.create(prepareBody(req.body));
+  router.post('/contents', async (req, res) => {
+    const record = await repository.create(await prepareBody(req.body));
     res.status(201).json({ data: safeContentRecord(record) });
   });
-  router.patch('/contents/:id', (req, res) => {
-    const old = repository.getById(req.params.id);
+  router.patch('/contents/:id', async (req, res) => {
+    const old = await repository.getById(req.params.id);
     if (!old) throw new ContentRepositoryError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.');
     if (old.kind === 'page') fail('고정 페이지는 해당 설정 화면에서 저장해 주세요.');
-    const input = prepareBody(req.body, old);
-    const record = repository.update(old.id, input, req.body.revision);
+    const input = await prepareBody(req.body, old);
+    const record = await repository.update(old.id, input, req.body.revision);
     res.json({ data: safeContentRecord(record) });
   });
-  router.delete('/contents/:id', (req, res) => {
+  router.delete('/contents/:id', async (req, res) => {
     object(req.body); allowedKeys(req.body, ['revision']);
-    repository.deleteContent(req.params.id, req.body.revision as number);
+    await repository.deleteContent(req.params.id, req.body.revision as number);
     res.status(204).end();
   });
-  router.get('/pages/:slug', (req, res) => {
+  router.get('/pages/:slug', async (req, res) => {
     if (!fixedSlugs.includes(req.params.slug)) throw new ContentRepositoryError('NOT_FOUND', '페이지를 찾을 수 없습니다.');
-    const record = repository.getBySlug('page', req.params.slug);
+    const record = await repository.getBySlug('page', req.params.slug);
     res.json({ data: record ? safeContentRecord(record) : null });
   });
-  router.put('/pages/:slug', (req, res) => {
+  router.put('/pages/:slug', async (req, res) => {
     if (!fixedSlugs.includes(req.params.slug)) throw new ContentRepositoryError('NOT_FOUND', '페이지를 찾을 수 없습니다.');
-    const old = repository.getBySlug('page', req.params.slug);
-    const input = prepareBody(req.body, old ?? undefined, req.params.slug);
-    const record = repository.savePage(input, req.body.revision);
+    const old = await repository.getBySlug('page', req.params.slug);
+    const input = await prepareBody(req.body, old ?? undefined, req.params.slug);
+    const record = await repository.savePage(input, req.body.revision);
     res.json({ data: safeContentRecord(record) });
   });
-  router.get('/home', (_req, res) => {
-    const result = repository.getAdminHome();
+  router.get('/home', async (_req, res) => {
+    const result = await repository.getAdminHome();
     res.json({ data: { ...result, page: result.page ? safeContentRecord(result.page) : null } });
   });
-  router.put('/home', (req, res) => {
+  router.put('/home', async (req, res) => {
     object(req.body); allowedKeys(req.body, ['page', 'items']); object(req.body.page);
-    const old = repository.getBySlug('page', 'home');
-    const input = prepareBody(req.body.page, old ?? undefined, 'home');
-    const result = repository.saveHome(input, req.body.items as HomeItemInput[], req.body.page.revision as number);
+    const old = await repository.getBySlug('page', 'home');
+    const input = await prepareBody(req.body.page, old ?? undefined, 'home');
+    const result = await repository.saveHome(input, req.body.items as HomeItemInput[], req.body.page.revision as number);
     res.json({ data: { ...result, page: safeContentRecord(result.page) } });
   });
   return router;

@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { matchPath } from 'react-router-dom';
 import { routeDefinitions } from '../shared/pageRoutes.js';
 import type { AppConfig } from './config.js';
-import type Database from 'better-sqlite3';
+import type BetterSqlite from 'better-sqlite3';
+import { asDataDatabase, type DataDatabase } from './db/dataDatabase.js';
+import { AppObjectStorage } from './files/objectStorage.js';
 import { ContentRepository, ContentRepositoryError } from './repositories/contentRepository.js';
 import { publicContentsRouter } from './http/publicContents.js';
 import { AuthService, AuthError } from './auth/service.js';
@@ -13,12 +15,13 @@ import { FileService, FileServiceError } from './files/service.js';
 import { adminFilesRouter, fileDownloadRouter } from './http/files.js';
 import { contentAdminRouter } from './http/notices.js';
 
-export function createApp(config: AppConfig, serveClient: boolean, database: Database.Database) {
+export function createApp(config: AppConfig, serveClient: boolean, database: DataDatabase | BetterSqlite.Database) {
   const app = express();
-  const repository = new ContentRepository(database);
-  const auth = new AuthService(database, { sessionTtlSeconds: config.sessionTtlSeconds });
+  const dataDatabase = asDataDatabase(database);
+  const repository = new ContentRepository(dataDatabase);
+  const auth = new AuthService(dataDatabase, { sessionTtlSeconds: config.sessionTtlSeconds });
   const guards = createAuthGuards(auth, config);
-  const files = new FileService(database, config);
+  const files = new FileService(dataDatabase, config, dataDatabase.dialect === 'postgres' ? new AppObjectStorage() : undefined);
   app.disable('x-powered-by');
   app.disable('etag');
   app.use((_req, res, next) => {
@@ -28,8 +31,8 @@ export function createApp(config: AppConfig, serveClient: boolean, database: Dat
     res.setHeader('X-Frame-Options', 'DENY');
     next();
   });
-  app.get('/api/health', (_req, res) => {
-    database.prepare('SELECT 1').get();
+  app.get('/api/health', async (_req, res) => {
+    await dataDatabase.prepare('SELECT 1').get();
     res.json({ data: { status: 'ok', stage: 'P-08', capabilities: { database: true, authentication: true, uploads: true } } });
   });
   app.use('/api/auth', authRouter(auth, config));
@@ -54,9 +57,9 @@ export function createApp(config: AppConfig, serveClient: boolean, database: Dat
     next();
   });
   if (serveClient) {
-    app.use((req, res, next) => {
+    app.use(async (req, res, next) => {
       if ((req.method === 'GET' || req.method === 'HEAD') && /^\/admin(?:\/|$)/i.test(req.path) && req.path !== '/admin/login') {
-        if (!auth.getSession(readCookie(req, SESSION_COOKIE))) {
+        if (!await auth.getSession(readCookie(req, SESSION_COOKIE))) {
           res.redirect(302, `/admin/login?next=${encodeURIComponent(req.path)}`);
           return;
         }

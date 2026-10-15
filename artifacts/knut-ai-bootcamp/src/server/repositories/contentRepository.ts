@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import type Database from 'better-sqlite3';
+import type BetterSqlite from 'better-sqlite3';
+import { asDataDatabase, type DataDatabase } from '../db/dataDatabase.js';
 import {
   contentKinds,
   type ContentKind, type ContentInput, type ContentRecord, type ContentSummary,
@@ -57,13 +58,18 @@ function summary(row: Row): ContentSummary {
 
 /** Trusted server services only. HTTP callers must pass the auth/CSRF middleware first. */
 export class ContentRepository {
-  constructor(private readonly db: Database.Database) {}
+  private readonly db: DataDatabase;
 
-  private write<T>(operation: () => T): T {
-    try { return this.db.transaction(operation).immediate(); }
+  constructor(db: DataDatabase | BetterSqlite.Database) {
+    this.db = asDataDatabase(db);
+  }
+
+  private async write<T>(operation: () => T | Promise<T>): Promise<T> {
+    try { return await this.db.transaction(operation).immediate(); }
     catch (error) {
       if (error instanceof ContentRepositoryError) throw error;
-      if (error instanceof Error && 'code' in error && String(error.code).startsWith('SQLITE_CONSTRAINT')) {
+      if (error instanceof Error && 'code' in error &&
+        (String(error.code).startsWith('SQLITE_CONSTRAINT') || ['23505', '23503', '23514'].includes(String(error.code)))) {
         throw new ContentRepositoryError('CONFLICT', '중복 식별자 또는 데이터 연결 제약을 확인해 주세요.');
       }
       throw error;
@@ -139,106 +145,112 @@ export class ContentRepository {
     }
   }
 
-  create(input: ContentInput): ContentRecord {
+  async create(input: ContentInput): Promise<ContentRecord> {
     this.validate(input);
-    return this.write(() => {
+    return this.write(async () => {
       const contentId = input.id ?? randomUUID();
       const now = new Date().toISOString();
-      this.db.prepare(`INSERT INTO contents
+      await this.db.prepare(`INSERT INTO contents
         (id,kind,slug,title,body_html,category,publication,pinned,sort_order,published_at,created_at,updated_at,revision)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`).run(contentId, input.kind, input.slug, input.title, input.bodyHtml,
         input.category ?? '', input.publication, input.pinned ? 1 : 0, input.sortOrder ?? 0,
         input.publishedAt === undefined ? (input.publication === 'public' ? now : null) : input.publishedAt, now, now);
-      this.replaceDetails(contentId, input);
-      return this.getById(contentId)!;
+      await this.replaceDetails(contentId, input);
+      return (await this.getById(contentId))!;
     });
   }
 
-  update(contentId: string, input: ContentInput, expectedRevision: number): ContentRecord {
+  async update(contentId: string, input: ContentInput, expectedRevision: number): Promise<ContentRecord> {
     id(contentId); this.validate(input); integer(expectedRevision, '수정 버전', 1, Number.MAX_SAFE_INTEGER);
-    return this.write(() => {
-      const old = this.db.prepare('SELECT * FROM contents WHERE id=?').get(contentId) as Row | undefined;
+    return this.write(async () => {
+      const old = await this.db.prepare('SELECT * FROM contents WHERE id=?').get(contentId) as Row | undefined;
       if (!old) throw new ContentRepositoryError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.');
       if ((input.id !== undefined && input.id !== contentId) || old.kind !== input.kind || old.slug !== input.slug) {
         throw new ContentRepositoryError('CONFLICT', '콘텐츠 식별자·종류·slug는 변경할 수 없습니다.');
       }
       if (old.revision !== expectedRevision) throw new ContentRepositoryError('CONFLICT', '다른 수정 내용이 있습니다. 새로 조회해 주세요.');
       const now = new Date().toISOString();
-      const result = this.db.prepare(`UPDATE contents SET title=?,body_html=?,category=?,publication=?,pinned=?,sort_order=?,
+      const result = await this.db.prepare(`UPDATE contents SET title=?,body_html=?,category=?,publication=?,pinned=?,sort_order=?,
         published_at=?,updated_at=?,revision=revision+1 WHERE id=? AND revision=?`).run(input.title, input.bodyHtml,
         input.category ?? '', input.publication, input.pinned ? 1 : 0, input.sortOrder ?? 0,
         input.publishedAt === undefined ? (old.published_at ?? (input.publication === 'public' ? now : null)) : input.publishedAt,
         now, contentId, expectedRevision);
       if (result.changes !== 1) throw new ContentRepositoryError('CONFLICT', '수정 버전이 일치하지 않습니다.');
-      this.replaceDetails(contentId, input);
-      return this.getById(contentId)!;
+      await this.replaceDetails(contentId, input);
+      return (await this.getById(contentId))!;
     });
   }
 
-  private replaceDetails(contentId: string, input: ContentInput) {
+  private async replaceDetails(contentId: string, input: ContentInput): Promise<void> {
     const relatedIds = input.relatedIds ?? [];
     for (const targetId of relatedIds) {
-      if (targetId === contentId || !this.db.prepare('SELECT 1 FROM contents WHERE id=?').get(targetId)) invalid('관련 콘텐츠의 연결 대상을 확인해 주세요.');
+      if (targetId === contentId || !await this.db.prepare('SELECT 1 FROM contents WHERE id=?').get(targetId)) invalid('관련 콘텐츠의 연결 대상을 확인해 주세요.');
     }
     const fileLinks: ContentFileInput[] = input.fileLinks ?? (input.fileIds ?? []).map((fileId) => ({ fileId, role: 'attachment' }));
     for (const file of fileLinks) {
-      const target = this.db.prepare('SELECT extension FROM files WHERE id=?').get(file.fileId) as Row | undefined;
+      const target = await this.db.prepare('SELECT extension FROM files WHERE id=?').get(file.fileId) as Row | undefined;
       if (!target) invalid('파일의 연결 대상을 확인해 주세요.');
       if (file.role !== 'attachment' && !['jpg', 'jpeg', 'png', 'webp'].includes(target.extension)) invalid('본문·메인 이미지에는 이미지 파일만 연결할 수 있습니다.');
     }
     // Each table name is a fixed internal constant; user values only enter prepared bindings.
     for (const table of ['program_details', 'resource_details', 'contact_details', 'content_files', 'content_links']) {
-      this.db.prepare(`DELETE FROM ${table} WHERE content_id=?`).run(contentId);
+      await this.db.prepare(`DELETE FROM ${table} WHERE content_id=?`).run(contentId);
     }
-    this.db.prepare('DELETE FROM content_relations WHERE source_id=?').run(contentId);
+    await this.db.prepare('DELETE FROM content_relations WHERE source_id=?').run(contentId);
     if (input.program) {
       const p = input.program;
-      this.db.prepare(`INSERT INTO program_details(content_id,level,audience,delivery,completion_requirements)
+      await this.db.prepare(`INSERT INTO program_details(content_id,level,audience,delivery,completion_requirements)
         VALUES (?,?,?,?,?)`).run(contentId, p.level, p.audience, p.delivery, p.completionRequirements);
     }
     if (input.resource) {
       const r = input.resource;
-      this.db.prepare(`INSERT INTO resource_details(content_id,audience,required_documents,instructions,deadline_text,
+      await this.db.prepare(`INSERT INTO resource_details(content_id,audience,required_documents,instructions,deadline_text,
         submission_method,destination,contact,applicable_year) VALUES (?,?,?,?,?,?,?,?,?)`)
         .run(contentId, r.audience, r.requiredDocuments, r.instructions, r.deadlineText, r.submissionMethod, r.destination, r.contact, r.applicableYear);
     }
     if (input.contact) {
       const c = input.contact;
-      this.db.prepare('INSERT INTO contact_details(content_id,name,phone,email,address,note) VALUES (?,?,?,?,?,?)')
+      await this.db.prepare('INSERT INTO contact_details(content_id,name,phone,email,address,note) VALUES (?,?,?,?,?,?)')
         .run(contentId, c.name, c.phone, c.email, c.address, c.note);
     }
-    relatedIds.forEach((targetId, index) => this.db.prepare('INSERT INTO content_relations(source_id,target_id,sort_order) VALUES (?,?,?)').run(contentId, targetId, index));
-    fileLinks.forEach((file, index) => this.db.prepare('INSERT INTO content_files(content_id,file_id,role,sort_order,alt_text) VALUES (?,?,?,?,?)')
-      .run(contentId, file.fileId, file.role, index, file.altText ?? ''));
-    (input.links ?? []).forEach((link, index) => this.db.prepare('INSERT INTO content_links(id,content_id,label,url,sort_order) VALUES (?,?,?,?,?)')
-      .run(link.id ?? randomUUID(), contentId, link.label, link.url, index));
+    for (const [index, targetId] of relatedIds.entries()) {
+      await this.db.prepare('INSERT INTO content_relations(source_id,target_id,sort_order) VALUES (?,?,?)').run(contentId, targetId, index);
+    }
+    for (const [index, file] of fileLinks.entries()) {
+      await this.db.prepare('INSERT INTO content_files(content_id,file_id,role,sort_order,alt_text) VALUES (?,?,?,?,?)')
+        .run(contentId, file.fileId, file.role, index, file.altText ?? '');
+    }
+    for (const [index, link] of (input.links ?? []).entries()) {
+      await this.db.prepare('INSERT INTO content_links(id,content_id,label,url,sort_order) VALUES (?,?,?,?,?)')
+        .run(link.id ?? randomUUID(), contentId, link.label, link.url, index);
+    }
   }
 
-  getById(contentId: string): ContentRecord | null { return this.read(contentId, false); }
-  getPublicById(contentId: string): ContentRecord | null { return this.read(contentId, true); }
+  getById(contentId: string): Promise<ContentRecord | null> { return this.read(contentId, false); }
+  getPublicById(contentId: string): Promise<ContentRecord | null> { return this.read(contentId, true); }
 
-  getFileMetadata(fileId: string): FileMetadata | null {
+  async getFileMetadata(fileId: string): Promise<FileMetadata | null> {
     if (!uuidPattern.test(fileId)) return null;
-    const row = this.db.prepare('SELECT * FROM files WHERE id=?').get(fileId) as Row | undefined;
+    const row = await this.db.prepare('SELECT * FROM files WHERE id=?').get(fileId) as Row | undefined;
     return row ? { id: row.id, storageKey: row.storage_key, originalName: row.original_name, mediaType: row.media_type,
       extension: row.extension, size: row.size, sha256: row.sha256, createdAt: row.created_at } : null;
   }
 
-  listNoticeCategories(publicOnly: boolean): string[] {
+  listNoticeCategories(publicOnly: boolean): Promise<string[]> {
     return this.listCategories('notice', publicOnly);
   }
 
-  listCategories(kind: ContentKind, publicOnly: boolean): string[] {
+  async listCategories(kind: ContentKind, publicOnly: boolean): Promise<string[]> {
     if (!contentKinds.includes(kind)) invalid('콘텐츠 종류를 확인해 주세요.');
-    return (this.db.prepare(`SELECT DISTINCT category FROM contents WHERE kind=? AND category<>''
+    return (await this.db.prepare(`SELECT DISTINCT category FROM contents WHERE kind=? AND category<>''
       ${publicOnly ? "AND publication='public'" : ''} ORDER BY category LIMIT 500`).all(kind) as { category: string }[]).map(row => row.category);
   }
 
-  listAdminNotices(query: ContentListQuery & { publication?: Publication } = {}): ContentList {
+  listAdminNotices(query: ContentListQuery & { publication?: Publication } = {}): Promise<ContentList> {
     return this.listAdminContents({ ...query, kind: 'notice' });
   }
 
-  listAdminContents(query: ContentListQuery & { publication?: Publication } = {}): ContentList {
+  async listAdminContents(query: ContentListQuery & { publication?: Publication } = {}): Promise<ContentList> {
     object(query, '검색'); keys(query, ['kind', 'q', 'category', 'page', 'pageSize', 'publication']);
     const kind = (query as ContentListQuery).kind;
     if (kind !== undefined && !contentKinds.includes(kind)) invalid('콘텐츠 종류를 확인해 주세요.');
@@ -257,82 +269,82 @@ export class ContentRepository {
       const escaped = query.q.trim().replace(/[\\%_]/g, '\\$&');
       if (escaped) { where.push("(c.title LIKE ? ESCAPE '\\' OR c.body_html LIKE ? ESCAPE '\\')"); bindings.push(`%${escaped}%`, `%${escaped}%`); }
     }
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
       const condition = where.join(' AND ');
-      const { total } = this.db.prepare(`SELECT COUNT(*) AS total FROM contents c WHERE ${condition}`).get(...bindings) as { total: number };
-      const rows = this.db.prepare(`SELECT c.*,p.level AS program_level FROM contents c
+      const { total } = await this.db.prepare(`SELECT COUNT(*) AS total FROM contents c WHERE ${condition}`).get(...bindings) as { total: number };
+      const rows = await this.db.prepare(`SELECT c.*,p.level AS program_level FROM contents c
         LEFT JOIN program_details p ON p.content_id=c.id WHERE ${condition} ORDER BY ${ordering} LIMIT ? OFFSET ?`)
         .all(...bindings, pageSize, (page - 1) * pageSize) as Row[];
       return { data: rows.map(summary), pagination: { page, pageSize, total } };
     }).deferred();
   }
 
-  deleteImpact(contentId: string) {
+  deleteImpact(contentId: string): Promise<{ id: string; revision: number; incomingLinks: number; homeLinks: number; files: { id: string; originalName: string; otherReferences: number }[] }> {
     id(contentId);
-    return this.db.transaction(() => {
-      const content = this.db.prepare('SELECT id, revision, kind, slug FROM contents WHERE id=?').get(contentId) as { id: string; revision: number; kind: ContentKind; slug: string } | undefined;
+    return this.db.transaction(async () => {
+      const content = await this.db.prepare('SELECT id, revision, kind, slug FROM contents WHERE id=?').get(contentId) as { id: string; revision: number; kind: ContentKind; slug: string } | undefined;
       if (!content) throw new ContentRepositoryError('NOT_FOUND', '콘텐츠를 찾을 수 없습니다.');
-      const incomingLinks = (this.db.prepare('SELECT count(*) AS n FROM content_relations WHERE target_id=?').get(contentId) as { n: number }).n;
+      const incomingLinks = (await this.db.prepare('SELECT count(*) AS n FROM content_relations WHERE target_id=?').get(contentId) as { n: number }).n;
       const homeLinks = content.kind === 'page' && content.slug === 'home'
-        ? (this.db.prepare('SELECT count(*) AS n FROM home_items').get() as { n: number }).n
-        : (this.db.prepare('SELECT count(*) AS n FROM home_items WHERE content_id=?').get(contentId) as { n: number }).n;
-      const files = this.db.prepare(`SELECT DISTINCT f.id, f.original_name AS originalName,
+        ? (await this.db.prepare('SELECT count(*) AS n FROM home_items').get() as { n: number }).n
+        : (await this.db.prepare('SELECT count(*) AS n FROM home_items WHERE content_id=?').get(contentId) as { n: number }).n;
+      const files = await this.db.prepare(`SELECT DISTINCT f.id, f.original_name AS originalName,
         (SELECT count(DISTINCT cf2.content_id) FROM content_files cf2 WHERE cf2.file_id=f.id AND cf2.content_id<>?) AS otherReferences
         FROM files f JOIN content_files cf ON cf.file_id=f.id WHERE cf.content_id=? ORDER BY f.id`).all(contentId, contentId) as { id: string; originalName: string; otherReferences: number }[];
       return { id: content.id, revision: content.revision, incomingLinks, homeLinks, files };
     }).deferred();
   }
 
-  deleteNotice(contentId: string, expectedRevision: number): void {
-    const content = this.getById(contentId);
+  async deleteNotice(contentId: string, expectedRevision: number): Promise<void> {
+    const content = await this.getById(contentId);
     if (!content || content.kind !== 'notice') throw new ContentRepositoryError('NOT_FOUND', '공지를 찾을 수 없습니다.');
-    this.deleteContent(contentId, expectedRevision);
+    await this.deleteContent(contentId, expectedRevision);
   }
 
-  noticeDeleteImpact(contentId: string) {
-    const content = this.getById(contentId);
+  async noticeDeleteImpact(contentId: string): Promise<Awaited<ReturnType<ContentRepository['deleteImpact']>>> {
+    const content = await this.getById(contentId);
     if (!content || content.kind !== 'notice') throw new ContentRepositoryError('NOT_FOUND', '공지를 찾을 수 없습니다.');
     return this.deleteImpact(contentId);
   }
 
-  deleteContent(contentId: string, expectedRevision: number): void {
+  async deleteContent(contentId: string, expectedRevision: number): Promise<void> {
     id(contentId); integer(expectedRevision, '수정 버전', 1, Number.MAX_SAFE_INTEGER);
-    this.write(() => {
-      const impact = this.deleteImpact(contentId);
+    await this.write(async () => {
+      const impact = await this.deleteImpact(contentId);
       if (impact.revision !== expectedRevision) throw new ContentRepositoryError('CONFLICT', '다른 수정 내용이 있습니다. 삭제 영향을 다시 확인해 주세요.');
-      const content = this.getById(contentId)!;
-      if (content.kind === 'page' && content.slug === 'home') this.db.prepare('DELETE FROM home_items').run();
+      const content = (await this.getById(contentId))!;
+      if (content.kind === 'page' && content.slug === 'home') await this.db.prepare('DELETE FROM home_items').run();
       // Only content-owned links are cascaded. Shared and unlinked file originals stay intact.
-      this.db.prepare('DELETE FROM contents WHERE id=? AND revision=?').run(contentId, expectedRevision);
+      await this.db.prepare('DELETE FROM contents WHERE id=? AND revision=?').run(contentId, expectedRevision);
     });
   }
 
   /** A file is public only through an actual public content link; paths/URLs confer no access. */
-  canReadFile(fileId: string, contentId: string | undefined, administrator: boolean): boolean {
+  async canReadFile(fileId: string, contentId: string | undefined, administrator: boolean): Promise<boolean> {
     if (!uuidPattern.test(fileId) || (contentId !== undefined && !uuidPattern.test(contentId))) return false;
-    if (administrator && contentId === undefined) return Boolean(this.db.prepare('SELECT 1 FROM files WHERE id=?').get(fileId));
+    if (administrator && contentId === undefined) return Boolean(await this.db.prepare('SELECT 1 FROM files WHERE id=?').get(fileId));
     const sql = `SELECT 1 FROM content_files cf JOIN contents c ON c.id=cf.content_id JOIN files f ON f.id=cf.file_id
       WHERE f.id=?${contentId === undefined ? '' : ' AND c.id=?'}${administrator ? '' : " AND c.publication='public'"} LIMIT 1`;
-    return Boolean(this.db.prepare(sql).get(...(contentId === undefined ? [fileId] : [fileId, contentId])));
+    return Boolean(await this.db.prepare(sql).get(...(contentId === undefined ? [fileId] : [fileId, contentId])));
   }
 
-  private read(contentId: string, publicOnly: boolean): ContentRecord | null {
+  private read(contentId: string, publicOnly: boolean): Promise<ContentRecord | null> {
     return this.db.transaction(() => this.readSnapshot(contentId, publicOnly)).deferred();
   }
 
-  private readSnapshot(contentId: string, publicOnly: boolean): ContentRecord | null {
+  private async readSnapshot(contentId: string, publicOnly: boolean): Promise<ContentRecord | null> {
     if (typeof contentId !== 'string' || !uuidPattern.test(contentId)) return null;
-    const row = this.db.prepare(`SELECT * FROM contents WHERE id=?${publicOnly ? " AND publication='public'" : ''}`).get(contentId) as Row | undefined;
+    const row = await this.db.prepare(`SELECT * FROM contents WHERE id=?${publicOnly ? " AND publication='public'" : ''}`).get(contentId) as Row | undefined;
     if (!row) return null;
-    const program = this.db.prepare('SELECT * FROM program_details WHERE content_id=?').get(contentId) as Row | undefined;
-    const resource = this.db.prepare('SELECT * FROM resource_details WHERE content_id=?').get(contentId) as Row | undefined;
-    const contact = this.db.prepare('SELECT * FROM contact_details WHERE content_id=?').get(contentId) as Row | undefined;
-    const related = this.db.prepare(`SELECT c.*,p.level AS program_level FROM content_relations r JOIN contents c ON c.id=r.target_id
+    const program = await this.db.prepare('SELECT * FROM program_details WHERE content_id=?').get(contentId) as Row | undefined;
+    const resource = await this.db.prepare('SELECT * FROM resource_details WHERE content_id=?').get(contentId) as Row | undefined;
+    const contact = await this.db.prepare('SELECT * FROM contact_details WHERE content_id=?').get(contentId) as Row | undefined;
+    const related = await this.db.prepare(`SELECT c.*,p.level AS program_level FROM content_relations r JOIN contents c ON c.id=r.target_id
       LEFT JOIN program_details p ON p.content_id=c.id
       WHERE r.source_id=?${publicOnly ? " AND c.publication='public'" : ''} ORDER BY r.sort_order,c.id`).all(contentId) as Row[];
-    const files = this.db.prepare(`SELECT f.id,f.original_name,f.media_type,f.extension,f.size,f.created_at,cf.role,cf.alt_text
+    const files = await this.db.prepare(`SELECT f.id,f.original_name,f.media_type,f.extension,f.size,f.created_at,cf.role,cf.alt_text
       FROM content_files cf JOIN files f ON f.id=cf.file_id WHERE cf.content_id=? ORDER BY cf.sort_order,f.id`).all(contentId) as Row[];
-    const links = this.db.prepare('SELECT id,label,url FROM content_links WHERE content_id=? ORDER BY sort_order,id').all(contentId) as { id: string; label: string; url: string }[];
+    const links = await this.db.prepare('SELECT id,label,url FROM content_links WHERE content_id=? ORDER BY sort_order,id').all(contentId) as { id: string; label: string; url: string }[];
     return {
       ...summary({ ...row, program_level: program?.level }), bodyHtml: row.body_html,
       program: program ? { level: program.level, audience: program.audience, delivery: program.delivery, completionRequirements: program.completion_requirements } : null,
@@ -346,28 +358,28 @@ export class ContentRepository {
     };
   }
 
-  getPublicBySlug(kind: ContentKind, slug: string): ContentRecord | null {
+  async getPublicBySlug(kind: ContentKind, slug: string): Promise<ContentRecord | null> {
     if (!contentKinds.includes(kind) || typeof slug !== 'string' || slug.length > 100) return null;
-    return this.db.transaction(() => {
-      const row = this.db.prepare("SELECT id FROM contents WHERE kind=? AND slug=? AND publication='public'").get(kind, slug) as { id: string } | undefined;
+    return this.db.transaction(async () => {
+      const row = await this.db.prepare("SELECT id FROM contents WHERE kind=? AND slug=? AND publication='public'").get(kind, slug) as { id: string } | undefined;
       return row ? this.getPublicById(row.id) : null;
     }).deferred();
   }
 
-  getBySlug(kind: ContentKind, slug: string): ContentRecord | null {
+  async getBySlug(kind: ContentKind, slug: string): Promise<ContentRecord | null> {
     if (!contentKinds.includes(kind) || typeof slug !== 'string' || slug.length > 100) return null;
-    return this.db.transaction(() => {
-      const row = this.db.prepare('SELECT id FROM contents WHERE kind=? AND slug=?').get(kind, slug) as { id: string } | undefined;
+    return this.db.transaction(async () => {
+      const row = await this.db.prepare('SELECT id FROM contents WHERE kind=? AND slug=?').get(kind, slug) as { id: string } | undefined;
       return row ? this.getById(row.id) : null;
     }).deferred();
   }
 
   /** Revision zero creates a missing fixed page; it never overwrites another first save. */
-  savePage(input: ContentInput, expectedRevision: number): ContentRecord {
+  async savePage(input: ContentInput, expectedRevision: number): Promise<ContentRecord> {
     if (input.kind !== 'page' || !pageSlugs.includes(input.slug)) invalid('고정 페이지를 확인해 주세요.');
     integer(expectedRevision, '수정 버전', 0, Number.MAX_SAFE_INTEGER);
-    return this.write(() => {
-      const old = this.getBySlug('page', input.slug);
+    return this.write(async () => {
+      const old = await this.getBySlug('page', input.slug);
       if (!old) {
         if (expectedRevision !== 0) throw new ContentRepositoryError('CONFLICT', '페이지가 삭제되었습니다. 새로 조회해 주세요.');
         return this.create(input);
@@ -377,27 +389,27 @@ export class ContentRepository {
     });
   }
 
-  getAdminHome(): { page: ContentRecord | null; items: HomeItemInput[] } {
-    return this.db.transaction(() => ({
-      page: this.getBySlug('page', 'home'),
-      items: this.db.prepare('SELECT section, content_id AS contentId FROM home_items ORDER BY sort_order,section,content_id').all() as HomeItemInput[],
+  getAdminHome(): Promise<{ page: ContentRecord | null; items: HomeItemInput[] }> {
+    return this.db.transaction(async () => ({
+      page: await this.getBySlug('page', 'home'),
+      items: await this.db.prepare('SELECT section, content_id AS contentId FROM home_items ORDER BY sort_order,section,content_id').all() as HomeItemInput[],
     })).deferred();
   }
 
-  saveHome(input: ContentInput, items: HomeItemInput[], expectedRevision: number) {
+  async saveHome(input: ContentInput, items: HomeItemInput[], expectedRevision: number): Promise<{ page: ContentRecord; items: HomeItemInput[] }> {
     if (input.kind !== 'page' || input.slug !== 'home') invalid('메인 설정을 확인해 주세요.');
-    return this.write(() => {
-      const page = this.savePage(input, expectedRevision);
-      this.setHomeItems(items);
-      return { page, items: this.getAdminHome().items };
+    return this.write(async () => {
+      const page = await this.savePage(input, expectedRevision);
+      await this.setHomeItems(items);
+      return { page, items: (await this.getAdminHome()).items };
     });
   }
 
-  listPublic(query: ContentListQuery = {}): ContentList {
+  listPublic(query: ContentListQuery = {}): Promise<ContentList> {
     return this.db.transaction(() => this.listPublicSnapshot(query)).deferred();
   }
 
-  private listPublicSnapshot(query: ContentListQuery): ContentList {
+  private async listPublicSnapshot(query: ContentListQuery): Promise<ContentList> {
     object(query, '검색'); keys(query, ['kind', 'q', 'category', 'page', 'pageSize']);
     const page = query.page ?? 1; const pageSize = query.pageSize ?? 20;
     integer(page, '페이지', 1, 100000); integer(pageSize, '페이지 크기', 1, 100);
@@ -414,52 +426,54 @@ export class ContentRepository {
       if (escaped) { where.push("(c.title LIKE ? ESCAPE '\\' OR c.body_html LIKE ? ESCAPE '\\')"); bindings.push(`%${escaped}%`, `%${escaped}%`); }
     }
     const condition = where.join(' AND ');
-    const { total } = this.db.prepare(`SELECT COUNT(*) AS total FROM contents c WHERE ${condition}`).get(...bindings) as { total: number };
-    const rows = this.db.prepare(`SELECT c.*,p.level AS program_level FROM contents c
+    const { total } = await this.db.prepare(`SELECT COUNT(*) AS total FROM contents c WHERE ${condition}`).get(...bindings) as { total: number };
+    const rows = await this.db.prepare(`SELECT c.*,p.level AS program_level FROM contents c
       LEFT JOIN program_details p ON p.content_id=c.id WHERE ${condition} ORDER BY ${ordering} LIMIT ? OFFSET ?`)
       .all(...bindings, pageSize, (page - 1) * pageSize) as Row[];
     return { data: rows.map(summary), pagination: { page, pageSize, total } };
   }
 
-  getPublicHome(): PublicHome {
+  getPublicHome(): Promise<PublicHome> {
     return this.db.transaction(() => this.publicHomeSnapshot()).deferred();
   }
 
-  private publicHomeSnapshot(): PublicHome {
+  private async publicHomeSnapshot(): Promise<PublicHome> {
     const sections: PublicHome['sections'] = { featured: [], notice: [], program: [], resource: [] };
-    const configuration = this.getBySlug('page', 'home');
-    const rows = this.db.prepare(`SELECT c.*,h.section,p.level AS program_level FROM home_items h JOIN contents c ON c.id=h.content_id
+    const configuration = await this.getBySlug('page', 'home');
+    const rows = await this.db.prepare(`SELECT c.*,h.section,p.level AS program_level FROM home_items h JOIN contents c ON c.id=h.content_id
       LEFT JOIN program_details p ON p.content_id=c.id
       WHERE c.publication='public' ORDER BY h.section,h.sort_order,c.id`).all() as Row[];
     if (!configuration || configuration.publication === 'public') {
       for (const row of rows) sections[row.section as keyof typeof sections].push(summary(row));
     }
-    const latest = this.db.prepare(`SELECT * FROM contents WHERE kind='notice' AND publication='public'
+    const latest = await this.db.prepare(`SELECT * FROM contents WHERE kind='notice' AND publication='public'
       ORDER BY COALESCE(published_at,created_at) DESC,id ASC LIMIT 5`).all() as Row[];
-    return { page: this.getPublicBySlug('page', 'home'), sections, latestNotices: latest.map(summary) };
+    return { page: await this.getPublicBySlug('page', 'home'), sections, latestNotices: latest.map(summary) };
   }
 
-  setHomeItems(items: HomeItemInput[]): void {
+  async setHomeItems(items: HomeItemInput[]): Promise<void> {
     if (!Array.isArray(items) || items.length > 100) invalid('메인 노출 목록을 확인해 주세요.');
     for (const item of items) {
       object(item, '메인 노출'); keys(item, ['section', 'contentId']); id(item.contentId);
       if (!['featured', 'notice', 'program', 'resource'].includes(item.section)) invalid('메인 노출 영역을 확인해 주세요.');
     }
     unique(items.map((item) => `${item.section}:${item.contentId}`), '메인 노출');
-    this.write(() => {
+    await this.write(async () => {
       for (const item of items) {
-        const target = this.db.prepare('SELECT kind,slug FROM contents WHERE id=?').get(item.contentId) as Row | undefined;
+        const target = await this.db.prepare('SELECT kind,slug FROM contents WHERE id=?').get(item.contentId) as Row | undefined;
         if (!target) invalid('메인 노출 콘텐츠를 찾을 수 없습니다.');
         if (target.kind === 'page' && target.slug === 'home') invalid('메인 설정 자체는 노출 콘텐츠로 선택할 수 없습니다.');
         if ((item.section === 'notice' && target.kind !== 'notice') || (item.section === 'resource' && target.kind !== 'resource') ||
           (item.section === 'program' && !['curriculum', 'activity'].includes(target.kind))) invalid('콘텐츠 종류와 메인 노출 영역이 일치하지 않습니다.');
       }
-      this.db.prepare('DELETE FROM home_items').run();
-      items.forEach((item, index) => this.db.prepare('INSERT INTO home_items(section,content_id,sort_order) VALUES (?,?,?)').run(item.section, item.contentId, index));
+      await this.db.prepare('DELETE FROM home_items').run();
+      for (const [index, item] of items.entries()) {
+        await this.db.prepare('INSERT INTO home_items(section,content_id,sort_order) VALUES (?,?,?)').run(item.section, item.contentId, index);
+      }
     });
   }
 
-  createFile(input: FileMetadataInput): FileMetadata {
+  async createFile(input: FileMetadataInput): Promise<FileMetadata> {
     object(input, '파일 메타데이터'); keys(input, ['id', 'storageKey', 'originalName', 'mediaType', 'extension', 'size', 'sha256']);
     if (input.id !== undefined) id(input.id);
     text(input.storageKey, '저장키', 240, true);
@@ -472,9 +486,9 @@ export class ContentRepository {
     if (!input.originalName.toLowerCase().endsWith(`.${input.extension}`)) invalid('원본 파일명과 확장자가 일치하지 않습니다.');
     integer(input.size, '파일 크기', 0, Number.MAX_SAFE_INTEGER);
     if (typeof input.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(input.sha256)) invalid('SHA-256 값을 확인해 주세요.');
-    return this.write(() => {
+    return this.write(async () => {
       const file = { ...input, id: input.id ?? randomUUID(), createdAt: new Date().toISOString() };
-      this.db.prepare(`INSERT INTO files(id,storage_key,original_name,media_type,extension,size,sha256,created_at)
+      await this.db.prepare(`INSERT INTO files(id,storage_key,original_name,media_type,extension,size,sha256,created_at)
         VALUES (?,?,?,?,?,?,?,?)`).run(file.id, file.storageKey, file.originalName, file.mediaType, file.extension, file.size, file.sha256, file.createdAt);
       return file;
     });

@@ -44,36 +44,36 @@ test('file originals retain Korean names, generate distinct immutable storage ke
   assert.notEqual(first.id, second.id);
   assert.equal(first.mediaType, 'application/pdf');
   assert.deepEqual(Object.keys(first).sort(), ['id', 'originalName', 'mediaType', 'extension', 'size', 'createdAt'].sort());
-  const content = repository.create(notice([first.id]));
-  const firstDisk = service.resolveDownload(first.id, content.id, false);
-  const secondDisk = service.resolveDownload(second.id, undefined, true);
+  const content = await repository.create(notice([first.id]));
+  const firstDisk = await service.resolveDownload(first.id, content.id, false);
+  const secondDisk = await service.resolveDownload(second.id, undefined, true);
   assert.notEqual(firstDisk.path, secondDisk.path);
-  assert.deepEqual(readFileSync(firstDisk.path), bytes);
+  assert.deepEqual(readFileSync(firstDisk.path!), bytes);
   db.close();
   const reopened = openDatabase(config.dbPath);
   try {
     const fresh = new FileService(reopened, config);
-    assert.deepEqual(readFileSync(fresh.resolveDownload(first.id, content.id, false).path), bytes);
-    assert.equal(fresh.resolveDownload(first.id, content.id, false).metadata.originalName, '한글 공지 안내.pdf');
+    assert.deepEqual(readFileSync((await fresh.resolveDownload(first.id, content.id, false)).path!), bytes);
+    assert.equal((await fresh.resolveDownload(first.id, content.id, false)).metadata.originalName, '한글 공지 안내.pdf');
   } finally { reopened.close(); }
 });
 
 test('temporary attachments stay private; each public download must name a public linked content ID', async t => {
   const { service, repository, db } = await fixture(t);
   const file = await service.saveUpload('임시 자료.pdf', pdfFixture());
-  assert.throws(() => service.resolveDownload(file.id, undefined, false), hasStatus(404));
-  assert.throws(() => service.resolveDownload(file.id, randomUUID(), false), hasStatus(404));
-  assert.equal(service.resolveDownload(file.id, undefined, true).metadata.id, file.id);
-  const hidden = repository.create(notice([file.id], 'private'));
-  assert.throws(() => service.resolveDownload(file.id, hidden.id, false), hasStatus(404));
-  assert.equal(service.resolveDownload(file.id, hidden.id, true).metadata.id, file.id);
-  const visible = repository.create(notice([file.id]));
-  assert.equal(service.resolveDownload(file.id, visible.id, false).metadata.id, file.id);
-  assert.throws(() => service.resolveDownload(file.id, hidden.id, false), hasStatus(404), 'Sharing the same bytes must not make a private content context public.');
+  await assert.rejects(() => service.resolveDownload(file.id, undefined, false), hasStatus(404));
+  await assert.rejects(() => service.resolveDownload(file.id, randomUUID(), false), hasStatus(404));
+  assert.equal((await service.resolveDownload(file.id, undefined, true)).metadata.id, file.id);
+  const hidden = await repository.create(notice([file.id], 'private'));
+  await assert.rejects(() => service.resolveDownload(file.id, hidden.id, false), hasStatus(404));
+  assert.equal((await service.resolveDownload(file.id, hidden.id, true)).metadata.id, file.id);
+  const visible = await repository.create(notice([file.id]));
+  assert.equal((await service.resolveDownload(file.id, visible.id, false)).metadata.id, file.id);
+  await assert.rejects(() => service.resolveDownload(file.id, hidden.id, false), hasStatus(404), 'Sharing the same bytes must not make a private content context public.');
   db.prepare("UPDATE contents SET publication='private' WHERE id=?").run(visible.id);
-  assert.throws(() => service.resolveDownload(file.id, visible.id, false), hasStatus(404));
-  assert.throws(() => service.resolveDownload(file.id, '../../etc/passwd', true), hasStatus(404));
-  assert.throws(() => service.resolveDownload('../../file.pdf', undefined, true), hasStatus(404));
+  await assert.rejects(() => service.resolveDownload(file.id, visible.id, false), hasStatus(404));
+  await assert.rejects(() => service.resolveDownload(file.id, '../../etc/passwd', true), hasStatus(404));
+  await assert.rejects(() => service.resolveDownload('../../file.pdf', undefined, true), hasStatus(404));
 });
 
 test('shared references prevent deletion and one content replacement does not break another attachment', async t => {
@@ -81,19 +81,19 @@ test('shared references prevent deletion and one content replacement does not br
   const old = await service.saveUpload('이전 자료.pdf', pdfFixture('Original'));
   const replacement = await service.saveUpload('교체 자료.pdf', pdfFixture('Replacement'));
   const oneInput = notice([old.id]);
-  const one = repository.create(oneInput);
-  const two = repository.create(notice([old.id]));
-  assert.throws(() => service.deleteUnlinked(old.id), hasStatus(409));
-  repository.update(one.id, { ...oneInput, fileIds: [replacement.id] }, one.revision);
-  assert.equal(service.resolveDownload(old.id, two.id, false).metadata.id, old.id);
-  assert.throws(() => service.resolveDownload(old.id, one.id, false), hasStatus(404));
-  assert.throws(() => service.deleteUnlinked(old.id), hasStatus(409));
+  const one = await repository.create(oneInput);
+  const two = await repository.create(notice([old.id]));
+  await assert.rejects(() => service.deleteUnlinked(old.id), hasStatus(409));
+  await repository.update(one.id, { ...oneInput, fileIds: [replacement.id] }, one.revision);
+  assert.equal((await service.resolveDownload(old.id, two.id, false)).metadata.id, old.id);
+  await assert.rejects(() => service.resolveDownload(old.id, one.id, false), hasStatus(404));
+  await assert.rejects(() => service.deleteUnlinked(old.id), hasStatus(409));
   db.prepare('DELETE FROM contents WHERE id=?').run(two.id);
-  const originalPath = service.resolveDownload(old.id, undefined, true).path;
-  service.deleteUnlinked(old.id);
+  const originalPath = (await service.resolveDownload(old.id, undefined, true)).path!;
+  await service.deleteUnlinked(old.id);
   assert.equal(existsSync(originalPath), false);
   assert.equal(db.prepare('SELECT 1 FROM files WHERE id=?').get(old.id), undefined);
-  assert.equal(service.resolveDownload(replacement.id, one.id, false).metadata.id, replacement.id);
+  assert.equal((await service.resolveDownload(replacement.id, one.id, false)).metadata.id, replacement.id);
 });
 
 test('a failed metadata insert removes the newly written object and failed deletion restores its private bytes', async t => {
@@ -104,11 +104,11 @@ test('a failed metadata insert removes the newly written object and failed delet
   assert.deepEqual(readdirSync(config.uploadDirectory), []);
   db.exec('DROP TRIGGER fail_file_insert');
   const saved = await service.saveUpload('보존 시험.pdf', pdfFixture());
-  const path = service.resolveDownload(saved.id, undefined, true).path;
+  const path = (await service.resolveDownload(saved.id, undefined, true)).path!;
   db.exec("CREATE TEMP TRIGGER fail_file_delete BEFORE DELETE ON files BEGIN SELECT RAISE(ABORT,'injected test failure'); END");
-  assert.throws(() => service.deleteUnlinked(saved.id));
+  await assert.rejects(() => service.deleteUnlinked(saved.id));
   assert.deepEqual(readFileSync(path), pdfFixture());
-  assert.equal(service.resolveDownload(saved.id, undefined, true).metadata.id, saved.id);
+  assert.equal((await service.resolveDownload(saved.id, undefined, true)).metadata.id, saved.id);
   assert.equal(readdirSync(config.uploadDirectory).length, 1);
   db.exec('DROP TRIGGER fail_file_delete');
 });
@@ -123,13 +123,13 @@ test('byte limits, actual disk quota, upload slots and persistent attempt limits
   await service.saveUpload('한도.pdf', bytes);
   writeFileSync(join(config.uploadDirectory, 'private-orphan.pending'), Buffer.alloc(bytes.length));
   await assert.rejects(() => service.saveUpload('저장소 초과.pdf', bytes), hasStatus(413));
-  const releaseA = service.acquireUploadSlot('parallel-test');
-  const releaseB = service.acquireUploadSlot('parallel-test');
-  assert.throws(() => service.acquireUploadSlot('parallel-test'), hasStatus(429));
+  const releaseA = await service.acquireUploadSlot('parallel-test');
+  const releaseB = await service.acquireUploadSlot('parallel-test');
+  await assert.rejects(() => service.acquireUploadSlot('parallel-test'), hasStatus(429));
   releaseA(); releaseA(); releaseB();
-  service.acquireUploadSlot('parallel-test')();
-  for (let index = 0; index < 30; index++) service.acquireUploadSlot('rate-test')();
-  assert.throws(() => service.acquireUploadSlot('rate-test'), hasStatus(429));
+  (await service.acquireUploadSlot('parallel-test'))();
+  for (let index = 0; index < 30; index++) (await service.acquireUploadSlot('rate-test'))();
+  await assert.rejects(() => service.acquireUploadSlot('rate-test'), hasStatus(429));
 });
 
 test('unsafe names, unsupported files and extension-only substitutions are rejected before disk storage', async t => {
@@ -187,14 +187,14 @@ test('missing or altered stored bytes are not returned and cleanup listing does 
   const { service, repository } = await fixture(t);
   const unattached = await service.saveUpload('미연결.pdf', pdfFixture());
   const attached = await service.saveUpload('연결.pdf', pdfFixture());
-  repository.create(notice([attached.id]));
-  const listing = service.listUnlinked();
+  await repository.create(notice([attached.id]));
+  const listing = await service.listUnlinked();
   assert.deepEqual(listing.map(file => file.id), [unattached.id]);
   assert.ok(!JSON.stringify(listing).includes('storage'));
-  const path = service.resolveDownload(unattached.id, undefined, true).path;
+  const path = (await service.resolveDownload(unattached.id, undefined, true)).path!;
   writeFileSync(path, 'truncated');
-  assert.throws(() => service.resolveDownload(unattached.id, undefined, true), hasStatus(404));
-  service.deleteUnlinked(unattached.id);
+  await assert.rejects(() => service.resolveDownload(unattached.id, undefined, true), hasStatus(404));
+  await service.deleteUnlinked(unattached.id);
   assert.equal(existsSync(path), false);
 });
 

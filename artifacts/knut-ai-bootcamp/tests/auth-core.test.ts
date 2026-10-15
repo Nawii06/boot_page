@@ -41,7 +41,7 @@ async function fixture(t: TestContext) {
 }
 
 async function login(service: AuthService, username: string, password: string, oldToken?: string) {
-  const pre = service.issueLoginCsrf('127.0.0.1');
+  const pre = await service.issueLoginCsrf('127.0.0.1');
   return service.login(username, password, '127.0.0.1', pre.token, pre.csrfToken, oldToken);
 }
 
@@ -74,15 +74,15 @@ test('create never overwrites existing accounts; explicit reset revokes all sess
   const first = await login(service, 'TEST.ADMIN', password);
   const second = await login(service, 'test.admin', password);
   assert.equal(first.admin.id, account.id);
-  assert.ok(service.getSession(first.token));
+  assert.ok(await service.getSession(first.token));
   await assert.rejects(createAdmin(f.db, 'test.admin', replacement));
-  assert.ok(service.getSession(first.token));
+  assert.ok(await service.getSession(first.token));
   const reset = await resetAdmin(f.db, 'test.admin', replacement);
   assert.equal(reset.id, account.id);
-  assert.equal(service.getSession(first.token), null);
-  assert.equal(service.getSession(second.token), null);
+  assert.equal(await service.getSession(first.token), null);
+  assert.equal(await service.getSession(second.token), null);
   const reopened = f.reopen();
-  assert.equal(reopened.getSession(first.token), null);
+  assert.equal(await reopened.getSession(first.token), null);
   await assert.rejects(login(reopened, 'test.admin', password), authError('AUTH_FAILED', 401));
   const next = await login(reopened, 'test.admin', replacement);
   assert.equal(next.admin.id, account.id);
@@ -94,23 +94,23 @@ test('pre-login CSRF is opaque, reuses an existing cookie, expires, and is consu
   const password = secret();
   await createAdmin(f.db, 'csrf.admin', password);
   const service = f.service();
-  const pre = service.issueLoginCsrf('127.0.0.1');
-  const again = service.issueLoginCsrf('127.0.0.1', pre.token);
+  const pre = await service.issueLoginCsrf('127.0.0.1');
+  const again = await service.issueLoginCsrf('127.0.0.1', pre.token);
   assert.ok(pre.token === again.token && pre.csrfToken === again.csrfToken);
   assert.equal(tokenMatches(pre.csrfToken, pre.csrfToken), true);
   assert.equal(tokenMatches(pre.csrfToken, randomBytes(32).toString('base64url')), false);
-  assert.equal(service.validateLoginCsrf(pre.token, pre.csrfToken), true);
-  assert.equal(service.validateLoginCsrf(pre.token, randomBytes(32).toString('base64url')), false);
+  assert.equal(await service.validateLoginCsrf(pre.token, pre.csrfToken), true);
+  assert.equal(await service.validateLoginCsrf(pre.token, randomBytes(32).toString('base64url')), false);
   await assert.rejects(service.login('csrf.admin', password, '127.0.0.1', pre.token, ''), authError('CSRF_INVALID', 403));
   const result = await service.login('csrf.admin', password, '127.0.0.1', pre.token, pre.csrfToken);
-  assert.equal(service.validateLoginCsrf(pre.token, pre.csrfToken), false);
+  assert.equal(await service.validateLoginCsrf(pre.token, pre.csrfToken), false);
   assert.ok(result.token !== pre.token && result.csrfToken !== pre.csrfToken);
   const stored = f.db.prepare('SELECT token_hash FROM sessions').get() as { token_hash: string };
   assert.equal(stored.token_hash, createHash('sha256').update(result.token).digest('hex'));
   assert.ok(!JSON.stringify(f.db.prepare('SELECT * FROM sessions').all()).includes(result.token));
-  const expiring = service.issueLoginCsrf('127.0.0.1');
+  const expiring = await service.issueLoginCsrf('127.0.0.1');
   f.advance(15 * 60 * 1000);
-  assert.equal(service.validateLoginCsrf(expiring.token, expiring.csrfToken), false);
+  assert.equal(await service.validateLoginCsrf(expiring.token, expiring.csrfToken), false);
 });
 
 test('sessions survive reopen, expire absolutely, rotate at login, and are invalidated by logout', async t => {
@@ -120,22 +120,22 @@ test('sessions survive reopen, expire absolutely, rotate at login, and are inval
   let service = f.service();
   const first = await login(service, 'session.admin', password);
   service = f.reopen();
-  assert.equal(service.getSession(first.token)?.admin.username, 'session.admin');
-  assert.equal(service.getSession('true'), null);
-  assert.equal(service.getSession(JSON.stringify({ isAdmin: true })), null);
-  assert.equal(service.getSession(randomBytes(32).toString('base64url')), null);
+  assert.equal((await service.getSession(first.token))?.admin.username, 'session.admin');
+  assert.equal(await service.getSession('true'), null);
+  assert.equal(await service.getSession(JSON.stringify({ isAdmin: true })), null);
+  assert.equal(await service.getSession(randomBytes(32).toString('base64url')), null);
   const second = await login(service, 'session.admin', password, first.token);
   assert.ok(first.token !== second.token);
-  assert.equal(service.getSession(first.token), null);
-  assert.ok(service.getSession(second.token));
-  service.logout(second.token);
-  assert.equal(f.reopen().getSession(second.token), null);
+  assert.equal(await service.getSession(first.token), null);
+  assert.ok(await service.getSession(second.token));
+  await service.logout(second.token);
+  assert.equal(await f.reopen().getSession(second.token), null);
   service = f.service();
   const third = await login(service, 'session.admin', password);
   f.advance(28_800_000 - 1);
-  assert.ok(service.getSession(third.token));
+  assert.ok(await service.getSession(third.token));
   f.advance(1);
-  assert.equal(service.getSession(third.token), null);
+  assert.equal(await service.getSession(third.token), null);
 });
 
 test('disabled administrators cannot log in or use an existing session, and reset does not re-enable them', async t => {
@@ -145,7 +145,7 @@ test('disabled administrators cannot log in or use an existing session, and rese
   const service = f.service();
   const session = await login(service, 'disabled.admin', password);
   f.db.prepare('UPDATE admins SET enabled=0 WHERE id=?').run(account.id);
-  assert.equal(service.getSession(session.token), null);
+  assert.equal(await service.getSession(session.token), null);
   await assert.rejects(login(service, 'disabled.admin', password), authError('AUTH_FAILED', 401));
   await assert.rejects(resetAdmin(f.db, 'disabled.admin', secret()));
   assert.equal((f.db.prepare('SELECT enabled FROM admins WHERE id=?').get(account.id) as { enabled: number }).enabled, 0);
@@ -156,7 +156,7 @@ test('account and IP attempt limits survive restart, hide account existence, and
   const password = secret();
   await createAdmin(f.db, 'rate.admin', password);
   let service = f.service();
-  const pre = service.issueLoginCsrf('127.0.0.1');
+  const pre = await service.issueLoginCsrf('127.0.0.1');
   for (let index = 0; index < 8; index++) {
     await assert.rejects(service.login('RATE.ADMIN', 'short', '127.0.0.1', pre.token, pre.csrfToken), authError('AUTH_FAILED', 401));
   }
@@ -164,8 +164,8 @@ test('account and IP attempt limits survive restart, hide account existence, and
   await assert.rejects(service.login('rate.admin', password, '127.0.0.1', pre.token, pre.csrfToken), (error: unknown) => error instanceof AuthError && error.code === 'LOGIN_RATE_LIMITED' && error.statusCode === 429 && Boolean(error.retryAfterSeconds));
   f.advance(15 * 60 * 1000 + 1);
   const next = await login(service, 'rate.admin', password);
-  assert.ok(service.getSession(next.token));
-  const shared = service.issueLoginCsrf('127.0.0.2');
+  assert.ok(await service.getSession(next.token));
+  const shared = await service.issueLoginCsrf('127.0.0.2');
   for (let index = 0; index < 30; index++) {
     await assert.rejects(service.login(`unknown-${index}`, 'short', '127.0.0.2', shared.token, shared.csrfToken), authError('AUTH_FAILED', 401));
   }
@@ -177,13 +177,13 @@ test('account and IP attempt limits survive restart, hide account existence, and
 test('pre-login session allocation is bounded per IP while valid cookie refreshes allocate nothing', async t => {
   const f = await fixture(t);
   const service = f.service();
-  const existing = service.issueLoginCsrf('127.0.0.1');
-  for (let index = 0; index < 80; index++) service.issueLoginCsrf('127.0.0.1', existing.token);
+  const existing = await service.issueLoginCsrf('127.0.0.1');
+  for (let index = 0; index < 80; index++) await service.issueLoginCsrf('127.0.0.1', existing.token);
   assert.equal((f.db.prepare('SELECT count(*) AS count FROM pre_auth_sessions').get() as { count: number }).count, 1);
-  for (let index = 1; index < 60; index++) service.issueLoginCsrf('127.0.0.1');
-  assert.throws(() => service.issueLoginCsrf('127.0.0.1'), authError('LOGIN_RATE_LIMITED', 429));
+  for (let index = 1; index < 60; index++) await service.issueLoginCsrf('127.0.0.1');
+  await assert.rejects(service.issueLoginCsrf('127.0.0.1'), authError('LOGIN_RATE_LIMITED', 429));
   f.advance(15 * 60 * 1000 + 1);
-  service.issueLoginCsrf('127.0.0.1');
+  await service.issueLoginCsrf('127.0.0.1');
   assert.equal((f.db.prepare('SELECT count(*) AS count FROM pre_auth_sessions').get() as { count: number }).count, 1);
 });
 
@@ -199,7 +199,7 @@ test('password reset cannot race an in-flight login into a valid session', async
   f.db.prepare('UPDATE admins SET password_hash=? WHERE id=?').run(replacementHash, account.id);
   f.db.prepare('DELETE FROM sessions WHERE admin_id=?').run(account.id);
   const outcome = await pending;
-  if ('result' in outcome) assert.equal(service.getSession(outcome.result.token), null);
+  if ('result' in outcome) assert.equal(await service.getSession(outcome.result.token), null);
   else assert.ok(authError('AUTH_FAILED', 401)(outcome.error));
 });
 

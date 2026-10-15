@@ -21,11 +21,11 @@ writeFileSync(join(fixture, '.env'), 'SHOULD_NEVER_BE_PUBLIC=private-test-marker
 const database = openDatabase(config.dbPath, { create: true });
 await migrateDatabase(database, resolve('migrations'), config.backupDirectory);
 const repository = new ContentRepository(database);
-const hidden = repository.create({ kind: 'notice', slug: 'hidden-api-example', title: '[예시] 비공개 안내', bodyHtml: '<p>예시 비공개 본문</p>', publication: 'private' });
-const visible = repository.create({ kind: 'notice', slug: 'public-api-example', title: '[예시] 공개 안내', bodyHtml: '<p>예시 공개 본문</p>', publication: 'public', relatedIds: [hidden.id] });
-repository.create({ kind: 'page', slug: 'overview', title: '[예시] 사업소개', bodyHtml: '<p>예시 입력 대기</p>', publication: 'public' });
-const program = repository.create({ kind: 'curriculum', slug: 'api-example-program', title: '[예시] 과정 안내', bodyHtml: '<p>예시 입력 대기</p>', publication: 'public', program: { level: '', audience: '', delivery: '', completionRequirements: '' }, relatedIds: [visible.id, hidden.id] });
-repository.setHomeItems([{ section: 'notice', contentId: visible.id }, { section: 'notice', contentId: hidden.id }]);
+const hidden = await repository.create({ kind: 'notice', slug: 'hidden-api-example', title: '[예시] 비공개 안내', bodyHtml: '<p>예시 비공개 본문</p>', publication: 'private' });
+const visible = await repository.create({ kind: 'notice', slug: 'public-api-example', title: '[예시] 공개 안내', bodyHtml: '<p>예시 공개 본문</p>', publication: 'public', relatedIds: [hidden.id] });
+await repository.create({ kind: 'page', slug: 'overview', title: '[예시] 사업소개', bodyHtml: '<p>예시 입력 대기</p>', publication: 'public' });
+const program = await repository.create({ kind: 'curriculum', slug: 'api-example-program', title: '[예시] 과정 안내', bodyHtml: '<p>예시 입력 대기</p>', publication: 'public', program: { level: '', audience: '', delivery: '', completionRequirements: '' }, relatedIds: [visible.id, hidden.id] });
+await repository.setHomeItems([{ section: 'notice', contentId: visible.id }, { section: 'notice', contentId: hidden.id }]);
 const server = createApp(config, true, database).listen(0, '127.0.0.1');
 await once(server, 'listening');
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -110,7 +110,7 @@ test('public API rejects invalid queries and treats SQL metacharacters as values
   const result = await fetch(`${base}/api/public/contents?q=${encodeURIComponent("' OR 1=1 --")}`);
   assert.equal(result.status, 200);
   assert.deepEqual((await result.json()).data, []);
-  assert.equal(repository.getById(hidden.id)?.publication, 'private');
+  assert.equal((await repository.getById(hidden.id))?.publication, 'private');
 });
 
 test('public/login routes support direct access and admin routes redirect without a session', async () => {

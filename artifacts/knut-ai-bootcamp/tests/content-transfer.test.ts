@@ -65,7 +65,7 @@ async function populate(directory: string) {
     const privateFile = await files.saveUpload('비공개 안내 원본.pdf', pdfFixture('Private original'));
     const unlinked = await files.saveUpload('미연결 임시 원본.pdf', pdfFixture('Unlinked original'));
     const common = { bodyHtml: '<p>예시 본문: 문단과 <strong>강조</strong></p><ul><li>유지할 목록</li></ul>', publication: 'public' as const, category: '예시 분류', publishedAt: '2026-10-01T00:00:00.000Z' };
-    const resource = repo.create({ ...common, kind: 'resource', slug: 'stable-form', title: '[예시] 서식 안내', fileIds: [shared.id], resource: {
+    const resource = await repo.create({ ...common, kind: 'resource', slug: 'stable-form', title: '[예시] 서식 안내', fileIds: [shared.id], resource: {
       audience: '예시 적용 대상', requiredDocuments: '서류 하나\n서류 둘', instructions: '예시 작성 방법', deadlineText: '확정 후 안내', submissionMethod: '예시 제출 방식', destination: '입력 대기', contact: '입력 대기', applicableYear: 2026,
     } });
     const noticeInput: ContentInput = { ...common, kind: 'notice', slug: 'stable-notice', title: '[예시] 공지', pinned: true, sortOrder: 3,
@@ -76,35 +76,35 @@ async function populate(directory: string) {
     noticeInput.id = randomUUID(); noticeInput.bodyHtml = noticeInput.bodyHtml.replace('NOTICE_ID', noticeInput.id);
     noticeInput.bodyHtml = cleanNoticeHtml(noticeInput.bodyHtml, id => id === image.id, noticeInput.id, new Map([[image.id, '예시 이미지']])).html;
     assert.ok(noticeInput.bodyHtml.includes(`data-file-id="${image.id}"`), 'The fixture must retain a real sanitized body image.');
-    const notice = repo.create(noticeInput);
+    const notice = await repo.create(noticeInput);
     const program = { level: '예시 기초', audience: '예시 대상', delivery: '예시 운영 방식', completionRequirements: '예시 이수 요건' };
-    const course = repo.create({ ...common, kind: 'curriculum', slug: 'stable-course', title: '[예시] 교육과정', program, relatedIds: [notice.id, resource.id] });
-    const activity = repo.create({ ...common, kind: 'activity', slug: 'stable-activity', title: '[예시] 산학 프로그램', program: { ...program, level: '예시 기업 협력' }, relatedIds: [course.id] });
-    const faq = repo.create({ ...common, kind: 'faq', slug: 'stable-faq', title: '[예시] 자주 묻는 질문', sortOrder: 7, relatedIds: [resource.id], links: [{ label: '예시 참고', url: 'https://example.com/faq' }] });
-    const privateNotice = repo.create({ ...common, kind: 'notice', slug: 'private-notice', title: '[예시] 비공개 공지', publication: 'private', fileIds: [privateFile.id] });
-    const draft = repo.create({ ...common, kind: 'faq', slug: 'draft-faq', title: '[예시] 초안 FAQ', publication: 'draft' });
-    const pages = ['overview', 'organization', 'cooperation', 'location', 'guide', 'home'].map(slug => repo.create({ ...common, kind: 'page', slug,
+    const course = await repo.create({ ...common, kind: 'curriculum', slug: 'stable-course', title: '[예시] 교육과정', program, relatedIds: [notice.id, resource.id] });
+    const activity = await repo.create({ ...common, kind: 'activity', slug: 'stable-activity', title: '[예시] 산학 프로그램', program: { ...program, level: '예시 기업 협력' }, relatedIds: [course.id] });
+    const faq = await repo.create({ ...common, kind: 'faq', slug: 'stable-faq', title: '[예시] 자주 묻는 질문', sortOrder: 7, relatedIds: [resource.id], links: [{ label: '예시 참고', url: 'https://example.com/faq' }] });
+    const privateNotice = await repo.create({ ...common, kind: 'notice', slug: 'private-notice', title: '[예시] 비공개 공지', publication: 'private', fileIds: [privateFile.id] });
+    const draft = await repo.create({ ...common, kind: 'faq', slug: 'draft-faq', title: '[예시] 초안 FAQ', publication: 'draft' });
+    const pages = await Promise.all(['overview', 'organization', 'cooperation', 'location', 'guide', 'home'].map(slug => repo.create({ ...common, kind: 'page', slug,
       title: `[예시] ${slug} 안내`, relatedIds: [notice.id, resource.id, privateNotice.id, draft.id],
       contact: { name: '입력 대기', phone: '', email: '', address: '주소 입력 대기', note: '공식 정보 아님' },
       ...(slug === 'home' ? { fileLinks: [{ fileId: image.id, role: 'home' as const, altText: '예시 메인 이미지' }] } : {}),
-    }));
-    repo.setHomeItems([{ section: 'featured', contentId: faq.id }, { section: 'notice', contentId: notice.id }, { section: 'program', contentId: course.id }, { section: 'program', contentId: activity.id }, { section: 'resource', contentId: resource.id }]);
+    })));
+    await repo.setHomeItems([{ section: 'featured', contentId: faq.id }, { section: 'notice', contentId: notice.id }, { section: 'program', contentId: course.id }, { section: 'program', contentId: activity.id }, { section: 'resource', contentId: resource.id }]);
     // Non-default revisions/timestamps must be preserved, not recreated with now().
-    repo.update(notice.id, { ...noticeInput, title: '[예시] 수정된 공지' }, notice.revision);
+    await repo.update(notice.id, { ...noticeInput, title: '[예시] 수정된 공지' }, notice.revision);
     db.prepare('UPDATE contents SET created_at=?,updated_at=?').run('2026-09-01T01:02:03.004Z', '2026-10-02T03:04:05.006Z');
     const username = `source-${randomBytes(5).toString('hex')}`, password = randomBytes(32).toString('base64url');
     await createAdmin(db, username, password);
     const auth = new AuthService(db, { sessionTtlSeconds: 600 });
-    const pre = auth.issueLoginCsrf('127.0.0.1');
+    const pre = await auth.issueLoginCsrf('127.0.0.1');
     const session = await auth.login(username, password, '127.0.0.1', pre.token, pre.csrfToken);
-    auth.issueLoginCsrf('127.0.0.2');
+    await auth.issueLoginCsrf('127.0.0.2');
     db.prepare('INSERT INTO seed_runs(key,checksum,applied_at) VALUES(?,?,?)').run('private-seed-marker', 'a'.repeat(64), new Date().toISOString());
     const envCanary = `NEVER_EXPORT_${randomBytes(24).toString('hex')}`;
     writeFileSync(join(directory, '.env'), `SECRET_KEY=${envCanary}\n`);
     const passwordHash = (db.prepare('SELECT password_hash FROM admins').get() as Row).password_hash as string;
     const preSecret = (db.prepare('SELECT csrf_secret FROM pre_auth_sessions').get() as Row).csrf_secret as string;
     const secretValues = [username, password, passwordHash, session.token, session.csrfToken, preSecret, envCanary, config.dbPath, config.uploadDirectory];
-    return { config, snapshot: rows(db), secretValues, pdf, shared, image, privateFile, unlinked, resource, notice: repo.getById(notice.id)!, course, pages };
+    return { config, snapshot: rows(db), secretValues, pdf, shared, image, privateFile, unlinked, resource, notice: (await repo.getById(notice.id))!, course, pages };
   } finally { db.close(); }
 }
 
@@ -215,7 +215,7 @@ test('logical content package round-trips every content table and original file 
   db = openDatabase(target.dbPath);
   const restarted = await runningApp(target, db);
   try {
-    assert.equal(new ContentRepository(db).getById(original.notice.id)?.title, '[예시] 복원 후 관리자 수정');
+    assert.equal((await new ContentRepository(db).getById(original.notice.id))?.title, '[예시] 복원 후 관리자 수정');
     const response = await restarted.request(`/api/public/contents/${original.notice.id}`);
     assert.equal(response.status, 200); assert.equal((await response.json()).data.revision, 3);
     const download = await restarted.request(`/api/files/${original.shared.id}?contentId=${original.notice.id}`);

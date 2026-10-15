@@ -7,16 +7,16 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function publicContentsRouter(repository: ContentRepository) {
   const router = Router();
-  router.get('/notice-categories', (_req, res) => res.json({ data: repository.listNoticeCategories(true) }));
-  router.get('/content-categories', (req, res) => {
+  router.get('/notice-categories', async (_req, res) => res.json({ data: await repository.listNoticeCategories(true) }));
+  router.get('/content-categories', async (req, res) => {
     const kind = req.query.kind;
     if (Object.keys(req.query).some(key => key !== 'kind') || typeof kind !== 'string' || !contentKinds.includes(kind as ContentKind)) {
       res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: '콘텐츠 종류를 확인해 주세요.' } });
       return;
     }
-    res.json({ data: repository.listCategories(kind as ContentKind, true) });
+    res.json({ data: await repository.listCategories(kind as ContentKind, true) });
   });
-  router.get('/contents', (req, res) => {
+  router.get('/contents', async (req, res) => {
     const allowed = ['kind', 'q', 'category', 'page', 'pageSize'];
     const query: ContentListQuery = {};
     for (const [key, value] of Object.entries(req.query)) {
@@ -45,32 +45,32 @@ export function publicContentsRouter(repository: ContentRepository) {
         query[key] = value;
       }
     }
-    res.json(repository.listPublic(query));
+    res.json(await repository.listPublic(query));
   });
-  router.get('/contents/:id', (req, res) => {
-    const content = uuid.test(req.params.id) ? repository.getPublicById(req.params.id) : null;
+  router.get('/contents/:id', async (req, res) => {
+    const content = uuid.test(req.params.id) ? await repository.getPublicById(req.params.id) : null;
     if (!content) { res.status(404).json(notFound); return; }
     res.json({ data: safeContentRecord(content) });
   });
-  router.get('/pages/:slug', (req, res) => {
+  router.get('/pages/:slug', async (req, res) => {
     if (!['overview', 'organization', 'cooperation', 'location', 'guide', 'home'].includes(req.params.slug)) {
       res.status(404).json(notFound); return;
     }
-    const content = repository.getPublicBySlug('page', req.params.slug);
+    const content = await repository.getPublicBySlug('page', req.params.slug);
     if (!content) { res.status(404).json(notFound); return; }
     res.json({ data: safeContentRecord(content) });
   });
-  router.get('/programs/:kind/:slug', (req, res) => {
+  router.get('/programs/:kind/:slug', async (req, res) => {
     const { kind, slug } = req.params;
     if (!['curriculum', 'activity'].includes(kind) || !/^[a-z0-9][a-z0-9-]{0,99}$/.test(slug)) {
       res.status(404).json(notFound); return;
     }
-    const content = repository.getPublicBySlug(kind as ContentKind, slug);
+    const content = await repository.getPublicBySlug(kind as ContentKind, slug);
     if (!content) { res.status(404).json(notFound); return; }
     res.json({ data: safeContentRecord(content) });
   });
-  router.get('/home', (_req, res) => {
-    const result = repository.getPublicHome();
+  router.get('/home', async (_req, res) => {
+    const result = await repository.getPublicHome();
     res.json({ data: { ...result, page: result.page ? safeContentRecord(result.page) : null } });
   });
   return router;

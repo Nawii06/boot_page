@@ -22,6 +22,7 @@
     "db:migrate": "tsx scripts/db.ts migrate",
     "db:seed": "tsx scripts/db.ts seed",
     "db:status": "tsx scripts/db.ts status",
+    "storage:migrate": "tsx scripts/storage-migrate.ts",
     "admin:create": "tsx scripts/admin.ts create",
     "admin:reset": "tsx scripts/admin.ts reset",
     "content:export": "tsx scripts/content.ts export",
@@ -29,6 +30,8 @@
     "source:package": "node scripts/package-source.mjs"
   },
   "dependencies": {
+    "@google-cloud/storage": "8.4.0",
+    "@workspace/db": "workspace:*",
     "better-sqlite3": "13.0.3",
     "busboy": "1.6.0",
     "cfb": "1.2.2",

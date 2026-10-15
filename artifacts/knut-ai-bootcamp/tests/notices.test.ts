@@ -104,13 +104,13 @@ test('real notice create/update/delete require authentication and CSRF, preserve
   assert.equal(visible.status, 200); assert.equal((await visible.json()).data.title, record.title);
   const invalid = await f.admin(`/api/admin/contents/${created.id}`, 'PATCH', { title: '', revision: 2 });
   assert.equal(invalid.status, 400);
-  assert.equal(f.repository.getById(created.id)?.revision, 2);
+  assert.equal((await f.repository.getById(created.id))?.revision, 2);
   const impact = await f.admin(`/api/admin/contents/${created.id}/delete-impact`);
   assert.equal(impact.status, 200); assert.equal((await impact.json()).data.revision, 2);
   assert.equal((await f.admin(`/api/admin/contents/${created.id}`, 'DELETE', { revision: 1 })).status, 409);
   assert.equal((await f.admin(`/api/admin/contents/${created.id}`, 'DELETE', { revision: 2 })).status, 204);
   assert.equal((await f.request(`/api/public/contents/${created.id}`)).status, 404);
-  assert.equal(f.repository.getById(created.id), null);
+  assert.equal(await f.repository.getById(created.id), null);
 });
 
 test('Korean PDF and generated DOCX uploads round-trip original bytes; temporary/draft/private links never become anonymous downloads', async t => {
@@ -165,7 +165,7 @@ test('replacing or deleting one notice leaves another reference to shared file i
   const old = (await oldUpload.json()).data, fresh = (await freshUpload.json()).data;
   const first = await f.create({ publication: 'public', fileLinks: [{ fileId: old.id, role: 'attachment' }] });
   const second = await f.create({ publication: 'public', title: '[예시] 공유 참조', fileLinks: [{ fileId: old.id, role: 'attachment' }], relatedIds: [first.id] });
-  f.repository.setHomeItems([{ section: 'notice', contentId: first.id }]);
+  await f.repository.setHomeItems([{ section: 'notice', contentId: first.id }]);
   const impact = await f.admin(`/api/admin/contents/${first.id}/delete-impact`);
   assert.equal(impact.status, 200);
   const impactData = (await impact.json()).data;
@@ -211,7 +211,7 @@ test('notice preview/save sanitize HTML and only permit persisted managed image 
   assert.equal(imageRead.status, 200); assert.match(imageRead.headers.get('content-disposition') ?? '', /inline/i);
   const failed = await f.admin(`/api/admin/contents/${created.id}`, 'PATCH', { revision: created.revision, bodyHtml: `<img data-file-id="${randomUUID()}" alt="unknown">` });
   assert.equal(failed.status, 404, 'Unknown managed image IDs are missing resources, never accepted HTML references');
-  assert.equal(f.repository.getById(created.id)?.revision, created.revision);
+  assert.equal((await f.repository.getById(created.id))?.revision, created.revision);
   const htmlImageOnly = await f.create({ bodyHtml: `<p>HTML에서 추가한 이미지</p><img data-file-id="${image.id}" alt="도식 &amp; 설명">`, fileLinks: [], publication: 'public' });
   assert.equal(htmlImageOnly.files.find((file: { id: string; role: string }) => file.id === image.id && file.role === 'body')?.altText, '도식 & 설명');
   assert.match(htmlImageOnly.bodyHtml, /alt="도식 &amp; 설명"/);
@@ -265,7 +265,7 @@ test('invalid uploads and failed persistence leave existing content/file links i
   assert.equal((f.db.prepare('SELECT COUNT(*) AS total FROM files').get() as { total: number }).total, 1);
   const failedSave = await f.admin(`/api/admin/contents/${created.id}`, 'PATCH', { revision: 1, fileLinks: [{ fileId: randomUUID(), role: 'attachment' }] });
   assert.equal(failedSave.status, 404);
-  const saved = f.repository.getById(created.id)!;
+  const saved = (await f.repository.getById(created.id))!;
   assert.equal(saved.revision, 1); assert.deepEqual(saved.files.map(item => item.id), [file.id]);
   assert.equal((await f.admin(`/api/files/${file.id}`)).status, 200);
 });
@@ -312,7 +312,7 @@ test('HTTP-created notice, all P06 content kinds, fixed pages, home selections, 
     const port = await availablePort(), base = `http://127.0.0.1:${port}`;
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/server/index.ts', '--dev'], {
       cwd: resolve('.'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DEV_PORT: '5173', DB_PATH: dbPath, UPLOAD_DIR: uploads, BACKUP_DIR: backups, APP_ORIGIN: base, COOKIE_SECURE: 'false', ALLOW_NETWORK: 'false' },
+      env: { ...process.env, DATABASE_URL: '', HOST: '127.0.0.1', PORT: String(port), DEV_PORT: '5173', DB_PATH: dbPath, UPLOAD_DIR: uploads, BACKUP_DIR: backups, APP_ORIGIN: base, COOKIE_SECURE: 'false', ALLOW_NETWORK: 'false' },
     });
     const exited = once(child, 'exit'); let output = '';
     child.stdout?.on('data', data => { output = `${output}${String(data)}`.slice(-4000); });

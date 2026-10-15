@@ -47,7 +47,42 @@ export function noticeDeleteImpact(id: string) { return request<{ data: DeleteIm
 export function deleteNotice(id: string, revision: number, csrfToken: string) { return request<void>(`/api/admin/contents/${encodeURIComponent(id)}`, json('DELETE', { revision }), csrfToken); }
 export function previewNotice(bodyHtml: string, fileLinks: ContentFileInput[], csrfToken: string, contentId?: string) { return request<{ data: { bodyHtml: string } }>('/api/admin/notices/preview', json('POST', { bodyHtml, fileLinks, ...(contentId ? { contentId } : {}) }), csrfToken); }
 export function uploadSettings(signal?: AbortSignal) { return request<{ data: UploadConfig }>('/api/admin/upload-config', { signal }); }
-export function uploadNoticeFile(file: File, csrfToken: string) { const body = new FormData(); body.append('file', file); return request<{ data: UploadedFile }>('/api/admin/files', { method: 'POST', body }, csrfToken); }
+export async function uploadNoticeFile(file: File, csrfToken: string): Promise<{ data: UploadedFile }> {
+  const intent = await request<{ data:
+    | { transport: 'multipart' }
+    | { transport: 'signed'; uploadIntentId: string; uploadUrl: string } }>(
+    '/api/admin/files/upload-url',
+    json('POST', { originalName: file.name, size: file.size }),
+    csrfToken,
+  );
+  if (intent.data.transport === 'multipart') {
+    const body = new FormData();
+    body.append('file', file);
+    return request<{ data: UploadedFile }>('/api/admin/files', { method: 'POST', body }, csrfToken);
+  }
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 120_000);
+  try {
+    const response = await fetch(intent.data.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new NoticeRequestError(response.status, '파일을 저장소로 전송하지 못했습니다. 다시 시도해 주세요.');
+  } catch (error) {
+    if (error instanceof NoticeRequestError) throw error;
+    throw new NoticeRequestError(503, '파일을 저장소로 전송하지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.');
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  return request<{ data: UploadedFile }>(
+    '/api/admin/files/complete',
+    json('POST', { uploadIntentId: intent.data.uploadIntentId }),
+    csrfToken,
+  );
+}
 export function listUnlinkedFiles() { return request<{ data: UploadedFile[] }>('/api/admin/files'); }
 export function deleteUnlinkedFile(id: string, csrfToken: string) { return request<void>(`/api/admin/files/${encodeURIComponent(id)}`, { method: 'DELETE' }, csrfToken); }
 export function fileUrl(id: string, contentId?: string, inline = false) { const params = new URLSearchParams(); if (contentId) params.set('contentId', contentId); if (inline) params.set('inline', '1'); return `/api/files/${encodeURIComponent(id)}${params.size ? `?${params}` : ''}`; }

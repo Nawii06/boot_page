@@ -39,7 +39,7 @@ async function launch(dbPath: string) {
   const port = await unusedPort();
   const child = spawn(process.execPath, ['--import', 'tsx', 'src/server/index.ts', '--dev'], {
     cwd: projectRoot,
-    env: { ...process.env, DB_PATH: dbPath, HOST: '127.0.0.1', PORT: String(port), DEV_PORT: String(port === 5173 ? 5174 : 5173), ALLOW_NETWORK: 'false' },
+    env: { ...process.env, DATABASE_URL: '', DB_PATH: dbPath, HOST: '127.0.0.1', PORT: String(port), DEV_PORT: String(port === 5173 ? 5174 : 5173), ALLOW_NETWORK: 'false' },
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -86,7 +86,7 @@ test('disk records survive actual server shutdown/restart after both insert and 
   let saved;
   try {
     await migrateDatabase(db, resolve('migrations'), join(directory, 'backups'));
-    saved = new ContentRepository(db).create(input);
+    saved = await new ContentRepository(db).create(input);
   } finally { db.close(); }
   let changed = saved;
 
@@ -102,7 +102,7 @@ test('disk records survive actual server shutdown/restart after both insert and 
     // HTTP read proves the API observes the committed disk/WAL transaction.
     db = openDatabase(dbPath);
     try {
-      changed = new ContentRepository(db).update(saved.id, {
+      changed = await new ContentRepository(db).update(saved.id, {
         ...input, title: '[예시] 서버 실행 중 수정한 제목', bodyHtml: '<p>수정 내용도 재시작 후 유지됩니다.</p>',
       }, saved.revision);
     } finally { db.close(); }
@@ -134,7 +134,7 @@ test('disk records survive actual server shutdown/restart after both insert and 
   db = openDatabase(dbPath);
   try {
     assert.equal((db.prepare('SELECT COUNT(*) AS count FROM contents').get() as { count: number }).count, 1);
-    assert.equal(new ContentRepository(db).getById(saved.id)?.revision, 2);
+    assert.equal((await new ContentRepository(db).getById(saved.id))?.revision, 2);
   } finally { db.close(); }
 });
 
