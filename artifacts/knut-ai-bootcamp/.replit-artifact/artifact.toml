@@ -50,3 +50,6 @@ args = ["pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-
 [services.production.run.env]
 PORT = "3000"
 NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/api/health"
