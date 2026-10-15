@@ -1,0 +1,55 @@
+kind = "web"
+previewPath = "/"
+title = "한국교통대학교 AI 부트캠프"
+description = "국립한국교통대학교 AI 부트캠프 사업단을 위한 공개 홈페이지와 관리자 콘텐츠 관리 기능. 공지·교육·서식·사업 안내를 실제 데이터에 연결해 운영하는 파일럿 사이트입니다."
+version = "1.0.0"
+id = "artifacts/knut-ai-bootcamp"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25508
+
+[services.development]
+run = "pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run dev:web"
+
+[services.production]
+build = [ "pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/knut-ai-bootcamp/dist/client"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25508"
+BASE_PATH = "/"
+API_PORT = "3000"
+DEV_PORT = "5173"
+
+
+[[services]]
+name = "api"
+paths = ["/api"]
+localPort = 3000
+
+[services.development]
+run = "pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run dev:api"
+
+[services.production.build]
+args = ["pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "build:server"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+
+[services.production.run]
+args = ["pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "serve:api"]
+
+[services.production.run.env]
+PORT = "3000"
+NODE_ENV = "production"
+
+[services.production.health.startup]
+path = "/api/health"

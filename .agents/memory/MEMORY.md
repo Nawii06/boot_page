@@ -1,0 +1,3 @@
+- [Replit runtime compatibility](replit-runtime-compatibility.md) — preserve the upstream Node 24.21 pin while Replit workflows run on an older Node version.
+- [Workspace publish security scans](workspace-publish-security-scans.md) — Replit can block publishing on vulnerable dependencies from any package in the monorepo.
+- [Ephemeral PostgreSQL tests](ephemeral-postgres-tests.md) — local scratch clusters need their Unix socket directory set explicitly in Replit.
