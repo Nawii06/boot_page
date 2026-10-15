@@ -14,7 +14,7 @@
     "dev:api": "node scripts/replit-run.mjs api-dev",
     "serve:api": "node scripts/replit-run.mjs api",
     "build": "npm run typecheck && vite build && tsc -p tsconfig.server.json",
-    "build:server": "tsc -p tsconfig.server.json",
+    "build:server": "pnpm --config.engine-strict=false --filter @workspace/db run build && tsc -p tsconfig.server.json",
     "start": "node dist/runtime/server/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
     "test": "tsx --test tests/*.test.ts",

@@ -265,6 +265,9 @@ export async function openManagedDatabase(): Promise<PostgresDataDatabase> {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required to use Replit Database.');
   }
-  const { pool } = await import('@workspace/db');
+  const databaseModule = process.env.NODE_ENV === 'production'
+    ? await import('@workspace/db/runtime')
+    : await import('@workspace/db');
+  const { pool } = databaseModule;
   return new PostgresDataDatabase(pool as unknown as PgPoolLike);
 }

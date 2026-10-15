@@ -17,7 +17,7 @@ run = "pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp ru
 [services.production]
 build = [ "pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "build" ]
 serve = "static"
-publicDir = "artifacts/knut-ai-bootcamp/dist/public"
+publicDir = "artifacts/knut-ai-bootcamp/dist/client"
 
 [[services.production.rewrites]]
 from = "/*"
@@ -45,7 +45,7 @@ args = ["pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-
 NODE_ENV = "production"
 
 [services.production.run]
-args = ["node", "scripts/replit-run.mjs", "api"]
+args = ["pnpm", "--config.engine-strict=false", "--filter", "@workspace/knut-ai-bootcamp", "run", "serve:api"]
 
 [services.production.run.env]
 PORT = "3000"
