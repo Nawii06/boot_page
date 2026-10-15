@@ -15,13 +15,19 @@ import { FileService, FileServiceError } from './files/service.js';
 import { adminFilesRouter, fileDownloadRouter } from './http/files.js';
 import { contentAdminRouter } from './http/notices.js';
 
-export function createApp(config: AppConfig, serveClient: boolean, database: DataDatabase | BetterSqlite.Database) {
+export function createApp(
+  config: AppConfig,
+  serveClient: boolean,
+  database: DataDatabase | BetterSqlite.Database,
+  fileService?: FileService,
+) {
   const app = express();
   const dataDatabase = asDataDatabase(database);
   const repository = new ContentRepository(dataDatabase);
   const auth = new AuthService(dataDatabase, { sessionTtlSeconds: config.sessionTtlSeconds });
   const guards = createAuthGuards(auth, config);
-  const files = new FileService(dataDatabase, config, dataDatabase.dialect === 'postgres' ? new AppObjectStorage() : undefined);
+  const files = fileService ??
+    new FileService(dataDatabase, config, dataDatabase.dialect === 'postgres' ? new AppObjectStorage() : undefined);
   app.disable('x-powered-by');
   app.disable('etag');
   app.use((_req, res, next) => {

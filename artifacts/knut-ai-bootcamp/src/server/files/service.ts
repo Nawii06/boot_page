@@ -110,6 +110,44 @@ export class FileService {
     }
   }
 
+  /** Remove expired, unfinalized objects while keeping failed deletions available for retry. */
+  async cleanupExpiredUploads(): Promise<number> {
+    if (!this.storage) return 0;
+    const now = new Date().toISOString();
+    const candidates = await this.db.prepare(`SELECT id FROM file_upload_intents
+      WHERE expires_at<=? AND NOT EXISTS(
+        SELECT 1 FROM files WHERE files.storage_key=file_upload_intents.storage_key
+      )
+      ORDER BY expires_at,id LIMIT 100`).all(now) as { id: string }[];
+    let removed = 0;
+
+    for (const candidate of candidates) {
+      try {
+        const didRemove = await this.db.transaction(async () => {
+          const lock = this.db.dialect === 'postgres' ? ' FOR UPDATE' : '';
+          const intent = await this.db.prepare(`SELECT storage_key FROM file_upload_intents
+            WHERE id=? AND expires_at<=? AND NOT EXISTS(
+              SELECT 1 FROM files WHERE files.storage_key=file_upload_intents.storage_key
+            )${lock}`).get(candidate.id, now) as { storage_key: string } | undefined;
+          if (!intent) return false;
+
+          // remove() ignores missing objects, so a retry after a successful delete is safe.
+          // Keep the intent until deletion succeeds so transient storage failures can be retried.
+          await this.storage!.remove(intent.storage_key);
+          const result = await this.db.prepare(`DELETE FROM file_upload_intents
+            WHERE id=? AND expires_at<=? AND NOT EXISTS(
+              SELECT 1 FROM files WHERE files.storage_key=file_upload_intents.storage_key
+            )`).run(candidate.id, now);
+          return result.changes === 1;
+        }).immediate();
+        if (didRemove) removed += 1;
+      } catch (error) {
+        console.error('Could not remove an expired private upload object.', error);
+      }
+    }
+    return removed;
+  }
+
   async requestUploadUrl(adminId: string, originalName: unknown, size: unknown): Promise<{ uploadIntentId: string; uploadUrl: string; expiresAt: string }> {
     if (!this.storage || !uuidPattern.test(adminId)) throw new FileServiceError('STORAGE_UNAVAILABLE', 503, '첨부파일 저장소를 사용할 수 없습니다.');
     if (typeof originalName !== 'string') throw new FileServiceError('INVALID_UPLOAD', 400, '파일 이름을 확인해 주세요.');
@@ -117,12 +155,6 @@ export class FileService {
     if (!Number.isSafeInteger(size) || (size as number) < 1) throw new FileServiceError('INVALID_UPLOAD', 400, '파일 크기를 확인해 주세요.');
     if ((size as number) > this.config.maxUploadBytes) throw new FileServiceError('FILE_TOO_LARGE', 413, '파일 크기 제한을 초과했습니다.');
     const now = new Date().toISOString();
-    const expired = await this.db.prepare('DELETE FROM file_upload_intents WHERE expires_at<=? RETURNING storage_key')
-      .all(now) as { storage_key: string }[];
-    for (const item of expired) {
-      try { await this.storage.remove(item.storage_key); }
-      catch (error) { console.error('Could not remove an expired private upload object.', error); }
-    }
     const usage = await this.db.prepare(`SELECT
       COALESCE((SELECT SUM(size) FROM files), 0) +
       COALESCE((SELECT SUM(declared_size) FROM file_upload_intents WHERE expires_at > ?), 0) AS total_bytes`)

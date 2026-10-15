@@ -10,6 +10,7 @@ import { openDatabase } from '../src/server/db/connection.js';
 import { migrateDatabase } from '../src/server/db/migrations.js';
 import { ContentRepository } from '../src/server/repositories/contentRepository.js';
 import { FileService, FileServiceError } from '../src/server/files/service.js';
+import type { AppObjectStorage } from '../src/server/files/objectStorage.js';
 import { validateFileBytes, validateOriginalName } from '../src/server/files/formats.js';
 import { pdfFixture, docxFixture, zipFixture } from './helpers/documents.js';
 
@@ -130,6 +131,69 @@ test('byte limits, actual disk quota, upload slots and persistent attempt limits
   (await service.acquireUploadSlot('parallel-test'))();
   for (let index = 0; index < 30; index++) (await service.acquireUploadSlot('rate-test'))();
   await assert.rejects(() => service.acquireUploadSlot('rate-test'), hasStatus(429));
+});
+
+test('expired signed uploads are cleaned independently, finalized objects are preserved, and failed deletes retry', async t => {
+  const { db, config } = await fixture(t);
+  const adminId = randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO admins (id,username,password_hash,enabled,created_at,updated_at)
+    VALUES (?,?,?,1,?,?)`).run(adminId, `cleanup-${adminId}`, 'test-hash', now, now);
+  db.exec(`CREATE TABLE file_upload_intents (
+    id TEXT PRIMARY KEY NOT NULL,
+    admin_id TEXT NOT NULL REFERENCES admins(id),
+    storage_key TEXT NOT NULL UNIQUE,
+    original_name TEXT NOT NULL,
+    declared_size INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  ) STRICT`);
+
+  const expiredKey = `uploads/${randomUUID()}`;
+  const retryKey = `uploads/${randomUUID()}`;
+  const futureKey = `uploads/${randomUUID()}`;
+  const finalizedKey = `uploads/${randomUUID()}`;
+  const finalizedId = randomUUID();
+  const objects = new Set([expiredKey, retryKey, futureKey, finalizedKey]);
+  let failuresRemaining = 1;
+  const removed: string[] = [];
+  const storage = {
+    remove: async (key: string) => {
+      removed.push(key);
+      if (key === retryKey && failuresRemaining > 0) {
+        failuresRemaining -= 1;
+        throw new Error('Temporary storage failure');
+      }
+      objects.delete(key);
+    },
+  } as unknown as AppObjectStorage;
+  const service = new FileService(db, config, storage);
+  const insertIntent = (key: string, expiresAt: string) => db.prepare(`INSERT INTO file_upload_intents
+    (id,admin_id,storage_key,original_name,declared_size,created_at,expires_at)
+    VALUES (?,?,?,?,?,?,?)`).run(randomUUID(), adminId, key, '자료.pdf', 1, now, expiresAt);
+  insertIntent(expiredKey, new Date(Date.now() - 60_000).toISOString());
+  insertIntent(retryKey, new Date(Date.now() - 60_000).toISOString());
+  insertIntent(futureKey, new Date(Date.now() + 60_000).toISOString());
+  insertIntent(finalizedKey, new Date(Date.now() - 60_000).toISOString());
+  db.prepare(`INSERT INTO files
+    (id,storage_key,original_name,media_type,extension,size,sha256,created_at)
+    VALUES (?,?,?,?,?,?,?,?)`).run(finalizedId, finalizedKey, '완료.pdf', 'application/pdf', 'pdf', 1, 'a'.repeat(64), now);
+
+  assert.equal(await service.cleanupExpiredUploads(), 1);
+  assert.equal(objects.has(expiredKey), false);
+  assert.equal(objects.has(retryKey), true);
+  assert.equal(objects.has(futureKey), true);
+  assert.equal(objects.has(finalizedKey), true);
+  assert.ok(db.prepare('SELECT 1 FROM file_upload_intents WHERE storage_key=?').get(retryKey));
+  assert.ok(db.prepare('SELECT 1 FROM file_upload_intents WHERE storage_key=?').get(futureKey));
+  assert.ok(db.prepare('SELECT 1 FROM file_upload_intents WHERE storage_key=?').get(finalizedKey));
+  assert.ok(db.prepare('SELECT 1 FROM files WHERE id=? AND storage_key=?').get(finalizedId, finalizedKey));
+
+  assert.equal(await service.cleanupExpiredUploads(), 1);
+  assert.equal(objects.has(retryKey), false);
+  assert.equal(await service.cleanupExpiredUploads(), 0);
+  assert.equal(removed.filter(key => key === expiredKey).length, 1);
+  assert.equal(removed.filter(key => key === retryKey).length, 2);
 });
 
 test('unsafe names, unsupported files and extension-only substitutions are rejected before disk storage', async t => {
