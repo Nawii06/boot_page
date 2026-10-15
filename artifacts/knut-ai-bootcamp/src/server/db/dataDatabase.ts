@@ -82,7 +82,7 @@ function normalizedParameters(parameters: unknown[]): unknown[] {
 function normalizedRows(rows: DatabaseRow[]): DatabaseRow[] {
   const numericFields = new Set([
     'total', 'n', 'count', 'size', 'revision', 'sort_order', 'pinned',
-    'enabled', 'attempts', 'applicable_year', 'declared_size',
+    'enabled', 'attempts', 'applicable_year', 'declared_size', 'total_bytes',
   ]);
   return rows.map((row) => {
     const normalized = { ...row };

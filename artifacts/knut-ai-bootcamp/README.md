@@ -122,6 +122,16 @@ npm.cmd test
 
 테스트는 격리된 `.cache/tests`의 실제 SQLite·저장 폴더와 무작위 임시 관리자를 사용합니다. DB 영속성·무결성·seed·마이그레이션, 비밀번호·세션·권한·CSRF에 더해 모든 콘텐츠 종류의 저장/수정/삭제, 고정 페이지와 메인 설정의 원자적 저장, 파일 업로드/다운로드·교체·공유 참조, 실패 복구, HTML 정화 및 실제 서버 프로세스 재시작을 검사합니다. 기본 DB와 사용자의 계정을 변경하지 않습니다. PDF/OpenXML DOCX/이미지는 생성한 시험 원본을 사용하고, HWP/HWPX 합성 구조 시험은 검사 코드 확인용이며 한컴 작성 원본의 호환성 증거가 아닙니다. 실제 실행 결과와 검증 범위는 [진행기록](docs/BUILD_PROGRESS.md)에 기록합니다.
 
+### 관리형 PostgreSQL 및 비공개 업로드 통합 검증
+
+Replit 워크스페이스에서 다음 명령을 실행합니다.
+
+```sh
+pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run test:managed
+```
+
+`pg_config`, `initdb`, `pg_ctl`이 설치된 PostgreSQL 서버 도구가 필요합니다. 명령은 매번 임시 PostgreSQL 클러스터를 새로 만들고 테스트 후 서버와 임시 파일을 제거합니다. 현재 설정된 `DATABASE_URL`은 테스트 자식 프로세스에 격리된 루프백 연결로 덮어쓰며, 개발·운영 DB에는 접속하지 않습니다. 저장소 검증은 실제 `AppObjectStorage`와 업로드·완료·다운로드 HTTP 경로를 사용하되, 서명 URL 발급기와 비공개 객체 클라이언트를 로컬 시험 서버로 대체합니다. 따라서 실제 App Storage 버킷이나 자격 증명을 사용하지 않고 테스트 파일도 남기지 않습니다.
+
 설치된 Google Chrome을 이용한 브라우저 검수는 `npm.cmd run build` 후 수행합니다. 시험이 별도 DB·임시 관리자·임의 포트의 서버를 실행하고 종료하므로 실제 관리자 설정이나 앱 서버 기동이 필요하지 않습니다. 개인 Chrome 프로필과 분리된 임시 테스트 프로필을 사용합니다.
 
 ```powershell

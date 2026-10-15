@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { File, Storage } from '@google-cloud/storage';
+import { Storage } from '@google-cloud/storage';
+import type { Readable } from 'node:stream';
 
 const SIDECAR_ENDPOINT = 'http://127.0.0.1:1106';
 const OBJECTS_PREFIX = '/objects/';
@@ -19,6 +20,24 @@ const storageClient = new Storage({
   projectId: '',
 });
 
+export interface AppStorageFile {
+  exists(): Promise<[boolean]>;
+  download(): Promise<[Buffer]>;
+  getMetadata(): Promise<[Record<string, unknown>]>;
+  createReadStream(): Readable;
+  delete(options?: { ignoreNotFound?: boolean }): Promise<unknown>;
+}
+
+export interface AppStorageClient {
+  bucket(bucketName: string): { file(objectName: string): AppStorageFile };
+}
+
+export interface AppObjectStorageOptions {
+  privateObjectDirectory?: () => string;
+  sidecarEndpoint?: string;
+  storageClient?: AppStorageClient;
+}
+
 function parseObjectPath(path: string): { bucketName: string; objectName: string } {
   const parts = (path.startsWith('/') ? path : `/${path}`).split('/');
   if (parts.length < 3 || !parts[1] || !parts.slice(2).join('/')) {
@@ -27,8 +46,8 @@ function parseObjectPath(path: string): { bucketName: string; objectName: string
   return { bucketName: parts[1], objectName: parts.slice(2).join('/') };
 }
 
-async function signPutURL(bucketName: string, objectName: string): Promise<string> {
-  const response = await fetch(`${SIDECAR_ENDPOINT}/object-storage/signed-object-url`, {
+async function signPutURL(bucketName: string, objectName: string, sidecarEndpoint: string): Promise<string> {
+  const response = await fetch(`${sidecarEndpoint}/object-storage/signed-object-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -55,8 +74,18 @@ export interface NewPrivateUpload {
 
 /** Private App Storage access is always mediated by the application's file permission checks. */
 export class AppObjectStorage {
+  private readonly objectDirectory: () => string;
+  private readonly sidecarEndpoint: string;
+  private readonly client: AppStorageClient;
+
+  constructor(options: AppObjectStorageOptions = {}) {
+    this.objectDirectory = options.privateObjectDirectory ?? (() => process.env.PRIVATE_OBJECT_DIR ?? '');
+    this.sidecarEndpoint = options.sidecarEndpoint ?? SIDECAR_ENDPOINT;
+    this.client = options.storageClient ?? storageClient as unknown as AppStorageClient;
+  }
+
   private privateDirectory(): string {
-    const configured = process.env.PRIVATE_OBJECT_DIR?.trim();
+    const configured = this.objectDirectory().trim();
     if (!configured) throw new Error('Private App Storage is not configured.');
     return configured.replace(/\/+$/, '');
   }
@@ -66,14 +95,14 @@ export class AppObjectStorage {
     const storageKey = `uploads/${objectId}`;
     const fullPath = `${this.privateDirectory()}/${storageKey}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
-    const uploadUrl = await signPutURL(bucketName, objectName);
+    const uploadUrl = await signPutURL(bucketName, objectName, this.sidecarEndpoint);
     return { uploadUrl, storageKey, objectPath: `${OBJECTS_PREFIX}${storageKey}` };
   }
 
-  async getFile(storageKey: string): Promise<File> {
+  async getFile(storageKey: string): Promise<AppStorageFile> {
     if (!/^uploads\/[0-9a-f-]{36}$/.test(storageKey)) throw new Error('Invalid private object key.');
     const { bucketName, objectName } = parseObjectPath(`${this.privateDirectory()}/${storageKey}`);
-    const file = storageClient.bucket(bucketName).file(objectName);
+    const file = this.client.bucket(bucketName).file(objectName);
     const [exists] = await file.exists();
     if (!exists) throw new Error('Private object was not found.');
     return file;
@@ -88,7 +117,7 @@ export class AppObjectStorage {
   async remove(storageKey: string): Promise<void> {
     if (!/^uploads\/[0-9a-f-]{36}$/.test(storageKey)) throw new Error('Invalid private object key.');
     const { bucketName, objectName } = parseObjectPath(`${this.privateDirectory()}/${storageKey}`);
-    const file = storageClient.bucket(bucketName).file(objectName);
+    const file = this.client.bucket(bucketName).file(objectName);
     await file.delete({ ignoreNotFound: true });
   }
 }
