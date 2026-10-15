@@ -9,7 +9,7 @@ model rather than replacing them with a new implementation.
 
 - The website preview is served at `/` by the `artifacts/knut-ai-bootcamp: web`
   workflow; its Express API is at `/api` via `artifacts/knut-ai-bootcamp: api`.
-- `pnpm install` — install the workspace packages.
+- `pnpm install --frozen-lockfile` — install the workspace packages.
 - `pnpm --config.engine-strict=false --filter @workspace/knut-ai-bootcamp run db:migrate`
   — writes SQLite migrations without DATABASE_URL, or development PostgreSQL
     schema with DATABASE_URL. Confirm the target first. No migration on startup.
@@ -57,7 +57,8 @@ model rather than replacing them with a new implementation.
   checkout or merge.
 - Keep the original local Node/npm pin for the Windows workflow. Replit's
   managed Node version differs, so the app workflows explicitly bypass only
-  pnpm's strict engine check; typecheck and build were verified in Replit.
+  pnpm's strict engine check. Earlier Replit records report passing typecheck
+  and build; these were not rerun during this main integration.
 - Replit API origin and secure cookies are derived at runtime from the Replit
   domain. Do not commit `.env`, credentials, database files, uploads, or backups.
 
